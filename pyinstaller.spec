@@ -62,6 +62,8 @@ hidden_imports = [
     'segment_anything.utils.amg',
     'segment_anything.utils.transforms',
     'segment_anything.utils.onnx',
+    'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
+    'torch.serialization', 'torch.multiprocessing',
 ]
 
 datas = [(str(Path(src)), dst) for src, dst in added_files]
@@ -70,6 +72,7 @@ datas += collect_data_files('rapidocr_onnxruntime')
 datas += collect_data_files('onnxruntime')
 
 binaries = collect_dynamic_libs('onnxruntime')
+binaries += collect_dynamic_libs('torch')
 
 a = Analysis(
     ['main.py'],
@@ -107,3 +110,17 @@ exe = EXE(
     entitlements_file=None,
     icon='logo/Gemini_Generated_Image_egithcegithcegit.png' if Path('logo/Gemini_Generated_Image_egithcegithcegit.png').exists() else None,
 )
+
+# On macOS, wrap EXE in a .app bundle
+import platform
+if platform.system() == 'Darwin':
+    app = BUNDLE(
+        exe,
+        name='DICOM_Analysis_Tool.app',
+        icon='logo/Gemini_Generated_Image_egithcegithcegit.png' if Path('logo/Gemini_Generated_Image_egithcegithcegit.png').exists() else None,
+        bundle_identifier='com.dicom.analysis.tool',
+        info_plist={
+            'NSHighResolutionCapable': 'True',
+            'LSMinimumSystemVersion': '11.0',
+        },
+    )
