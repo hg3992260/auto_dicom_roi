@@ -27,30 +27,25 @@ jobs:
       - name: Install Python deps
         run: |
           pip install --upgrade pip
-          pip install PySide6 PyCt6 pydicom numpy opencv-python scikit-image Pillow
+          pip install PySide6 PyCt6 pydicom numpy scikit-image Pillow
+          pip install opencv-python-headless
           pip install onnxruntime rapidocr-onnxruntime
-          pip install openpyxl scipy torch segment-anything
+          pip install openpyxl scipy
           pip install pyinstaller
 
-      - name: Download SAM models
-        run: |
-          mkdir -p models
-          curl -L -o models/sam_vit_b_01ec64.pth \
-            https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
-
       - name: Build .app bundle
-        run: pyinstaller pyinstaller.spec --clean --noconfirm
+        run: |
+          pyinstaller pyinstaller.spec --clean --noconfirm
+          ls -la dist/
 
       - name: Create DMG
         run: |
           mkdir -p dmg_root
           cp -R dist/DICOM_Analysis_Tool.app dmg_root/
-          cp logo/Gemini_Generated_Image_egithcegithcegit.png dmg_root/logo.png
           mkdir -p dmg_root/models
           echo "Place SAM models here (sam_vit_b_01ec64.pth, etc.)" > dmg_root/models/README.txt
           create-dmg \
             --volname "DICOM Analysis Tool" \
-            --volicon "logo/Gemini_Generated_Image_egithcegithcegit.png" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
