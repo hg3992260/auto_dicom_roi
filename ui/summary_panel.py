@@ -105,10 +105,11 @@ class SummaryPanel(QWidget):
         table_layout.addLayout(table_header_row)
 
         self.roi_table = QTableWidget()
-        self.roi_table.setColumnCount(14)
+        self.roi_table.setColumnCount(16)
         self.roi_table.setHorizontalHeaderLabels([
             "编号", "方法", "文件", "设备", "部位", "协议",
-            "面积(mm²)", "均值(HU)", "标准差", "Min/Max(HU)", "扫描日期", "时间", "OCR文本", "描述"
+            "面积(mm²)", "均值(HU)", "标准差", "Min/Max(HU)", "扫描日期", "时间",
+            "长度(mm)", "角度(°)", "OCR文本", "描述"
         ])
         for ci in [0, 1, 3, 4, 7, 8, 11]:
             self.roi_table.horizontalHeader().setSectionResizeMode(ci, QHeaderView.ResizeMode.ResizeToContents)
@@ -165,21 +166,40 @@ class SummaryPanel(QWidget):
                 str(r.get("manufacturer_model", "")),
                 (str(r.get("magnetic_field_strength", "")) + "T") if r.get("magnetic_field_strength") else "",
             ])).strip()
+            # Shape-specific display
+            method = str(r.get("method", ""))
+            area_val = ""
+            mean_val = ""
+            length_val = ""
+            angle_val = ""
+            if r.get("length_mm"):
+                length_val = f"{r['length_mm']:.2f}"
+            if r.get("angle_deg"):
+                angle_val = f"{r['angle_deg']:.1f}°"
+            if method.startswith("manual_line") or method.startswith("manual_measure"):
+                area_val = f"{r['area_mm2']:.2f} mm" if r.get("area_mm2") else ""
+            elif method.startswith("manual_angle"):
+                angle_val = f"{r.get('angle_deg', r.get('area_mm2', 0)):.1f}°" if (r.get('angle_deg') or r.get('area_mm2')) else ""
+            else:
+                area_val = f"{r['area_mm2']:.2f}" if r.get("area_mm2") else ""
+                mean_val = f"{r['mean_hu']:.2f}" if r.get("mean_hu") else ""
             items = [
                 QTableWidgetItem(str(r.get("roi_number", ""))),
-                QTableWidgetItem(str(r.get("method", ""))),
+                QTableWidgetItem(method),
                 QTableWidgetItem(str(r.get("file_basename", ""))),
                 QTableWidgetItem(device),
                 QTableWidgetItem(str(r.get("body_part", ""))),
                 QTableWidgetItem(str(r.get("protocol_name", "") or str(r.get("series_description", "")))),
-                QTableWidgetItem(f"{r['area_mm2']:.2f}" if r.get("area_mm2") else ""),
-                QTableWidgetItem(f"{r['mean_hu']:.2f}" if r.get("mean_hu") else ""),
+                QTableWidgetItem(area_val),
+                QTableWidgetItem(mean_val),
                 QTableWidgetItem(f"{r['std_hu']:.2f}" if r.get("std_hu") else ""),
                 QTableWidgetItem(
                     f"{r['min_hu']:.0f}/{r['max_hu']:.0f}"
                     if r.get("min_hu") and r.get("max_hu") else ""),
                 QTableWidgetItem(str(r.get("study_date", ""))),
                 QTableWidgetItem(str(r.get("created_at", ""))[:16]),
+                QTableWidgetItem(length_val),
+                QTableWidgetItem(angle_val),
             ]
             # OCR text column
             ocr_text = ""
@@ -231,8 +251,8 @@ class SummaryPanel(QWidget):
         ws.title = "ROI数据"
         headers = ["患者", "编号", "方法", "来源", "文件名", "设备", "制造商型号", "场强", "部位",
                    "协议", "序列描述", "层厚", "像素间距", "模态",
-                   "面积mm²", "均值HU", "标准差", "最小值HU", "最大值HU", "中位数HU",
-                   "像素数", "扫描日期", "扫描时间", "创建时间", "ROI描述", "OCR文本"]
+                    "面积mm²", "均值HU", "标准差", "最小值HU", "最大值HU", "中位数HU",
+                    "像素数", "扫描日期", "扫描时间", "创建时间", "长度(mm)", "角度(°)", "ROI描述", "OCR文本"]
         ws.append(headers)
         for r in rois:
             ocr_text = ""
@@ -242,6 +262,12 @@ class SummaryPanel(QWidget):
                     import json
                     stats = json.loads(stats_json)
                     ocr_text = stats.get("OCR识别完整文本", "")
+            method = str(r.get("method", ""))
+            area_or_length = r.get("area_mm2")
+            if method.startswith("manual_line") or method.startswith("manual_measure"):
+                area_or_length = f"{area_or_length:.2f} mm" if area_or_length else ""
+            elif method.startswith("manual_angle"):
+                area_or_length = f"{area_or_length:.1f}°" if area_or_length else ""
             ws.append([
                 r.get("patient_name", ""),
                 r.get("roi_number", ""), r.get("method", ""), r.get("source", ""),
@@ -250,10 +276,12 @@ class SummaryPanel(QWidget):
                 r.get("body_part", ""), r.get("protocol_name", ""),
                 r.get("series_description", ""), r.get("slice_thickness", ""),
                 r.get("pixel_spacing", ""), r.get("modality", ""),
-                r.get("area_mm2"), r.get("mean_hu"), r.get("std_hu"),
+                area_or_length, r.get("mean_hu"), r.get("std_hu"),
                 r.get("min_hu"), r.get("max_hu"), r.get("median_hu"),
                 r.get("pixel_count"), r.get("study_date", ""), r.get("study_time", ""),
-                str(r.get("created_at", ""))[:19], r.get("roi_description", ""),
+                str(r.get("created_at", ""))[:19],
+                r.get("length_mm"), r.get("angle_deg"),
+                r.get("roi_description", ""),
                 ocr_text,
             ])
         ws.auto_filter.ref = ws.dimensions

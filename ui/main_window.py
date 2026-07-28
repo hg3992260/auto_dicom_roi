@@ -62,6 +62,7 @@ class ScanWorker(QThread):
 
 class UnifiedViewer(QScrollArea):
     sam_point_added = Signal(int, int, int)
+    manual_roi_completed = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -91,6 +92,73 @@ class UnifiedViewer(QScrollArea):
         self._scale = 1.0
         self._offset_x = 0
         self._offset_y = 0
+        self._draw_mode = False
+        self._draw_shape = ""
+        self._draw_points = []
+        self._draw_state = 0
+        self._draw_complete = False
+        self._label.mouseMoveEvent = self._on_mouse_move
+        self._label.mouseReleaseEvent = self._on_mouse_release
+
+    def set_manual_draw(self, shape: str, enabled: bool = True):
+        self._draw_mode = enabled
+        self._draw_shape = shape
+        self._draw_points = []
+        self._draw_state = 0
+        self._draw_complete = False
+        self._refresh_display()
+
+    def _get_pixel_spacing(self):
+        try:
+            import pydicom
+            ds = pydicom.dcmread(self._current_path, force=True, stop_before_pixels=True)
+            ps = getattr(ds, 'PixelSpacing', None)
+            if ps and len(ps) >= 2:
+                return float(ps[0]), float(ps[1])
+        except Exception:
+            pass
+        return 1.0, 1.0
+
+    def get_draw_mask(self) -> np.ndarray:
+        if self._raw_pixels is None:
+            return None
+        h, w = self._raw_pixels.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        if not self._draw_complete or len(self._draw_points) < 2:
+            return mask
+        pts = self._draw_points
+        if self._draw_shape == "rect":
+            x0, y0 = pts[0]; x1, y1 = pts[-1]
+            x_min, x_max = sorted([int(x0), int(x1)])
+            y_min, y_max = sorted([int(y0), int(y1)])
+            x_min, x_max = max(0, x_min), min(w, x_max)
+            y_min, y_max = max(0, y_min), min(h, y_max)
+            if x_max > x_min and y_max > y_min:
+                mask[y_min:y_max, x_min:x_max] = 255
+        elif self._draw_shape == "circle":
+            cx, cy = pts[0]
+            ex, ey = pts[-1]
+            radius = int(np.sqrt((ex - cx)**2 + (ey - cy)**2))
+            cv2.circle(mask, (int(cx), int(cy)), radius, 255, -1)
+        elif self._draw_shape in ("line", "angle"):
+            if self._draw_shape == "line" and len(pts) >= 2:
+                cv2.line(mask, (int(pts[0][0]), int(pts[0][1])),
+                         (int(pts[1][0]), int(pts[1][1])), 255, 3)
+            elif self._draw_shape == "angle" and len(pts) >= 3:
+                cv2.line(mask, (int(pts[1][0]), int(pts[1][1])),
+                         (int(pts[0][0]), int(pts[0][1])), 255, 2)
+                cv2.line(mask, (int(pts[1][0]), int(pts[1][1])),
+                         (int(pts[2][0]), int(pts[2][1])), 255, 2)
+        elif self._draw_shape == "poly":
+            if len(pts) >= 3:
+                poly = np.array(pts, dtype=np.int32)
+                cv2.fillPoly(mask, [poly], 255)
+        elif self._draw_shape == "measure":
+            if len(pts) >= 2:
+                for i in range(len(pts) - 1):
+                    cv2.line(mask, (int(pts[i][0]), int(pts[i][1])),
+                             (int(pts[i+1][0]), int(pts[i+1][1])), 255, 3)
+        return mask
 
     def set_sam_mode(self, enabled: bool):
         self._sam_mode = enabled
@@ -176,7 +244,7 @@ class UnifiedViewer(QScrollArea):
         else:
             gray = np.zeros_like(self._raw_pixels, dtype=np.uint8)
 
-        if self._sam_mode or self._mask is not None:
+        if self._sam_mode or self._mask is not None or self._draw_mode:
             display = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
             self._image_rgb = display.copy()
             if self._mask is not None:
@@ -191,6 +259,44 @@ class UnifiedViewer(QScrollArea):
                     color = (0, 255, 0) if self._point_labels[i] == 1 else (255, 0, 0)
                     cv2.circle(display, (px, py), 5, color, -1)
                     cv2.circle(display, (px, py), 6, (255, 255, 255), 1)
+            # Draw manual ROI previews
+            if self._draw_mode and len(self._draw_points) > 0:
+                pts = self._draw_points
+                if self._draw_shape == "rect" and len(pts) >= 2:
+                    x0, y0 = int(pts[0][0]), int(pts[0][1])
+                    x1, y1 = int(pts[-1][0]), int(pts[-1][1])
+                    cv2.rectangle(display, (x0, y0), (x1, y1), (255, 255, 0), 2)
+                elif self._draw_shape == "circle" and len(pts) >= 2:
+                    cx, cy = int(pts[0][0]), int(pts[0][1])
+                    ex, ey = int(pts[-1][0]), int(pts[-1][1])
+                    r = int(np.sqrt((ex - cx)**2 + (ey - cy)**2))
+                    cv2.circle(display, (cx, cy), r, (255, 255, 0), 2)
+                elif self._draw_shape == "line" and len(pts) >= 2:
+                    cv2.line(display, (int(pts[0][0]), int(pts[0][1])),
+                             (int(pts[1][0]), int(pts[1][1])), (255, 255, 0), 2)
+                elif self._draw_shape == "angle" and len(pts) > 0:
+                    for p in pts:
+                        cv2.circle(display, (int(p[0]), int(p[1])), 3, (255, 255, 0), -1)
+                    if len(pts) >= 2:
+                        cv2.line(display, (int(pts[0][0]), int(pts[0][1])),
+                                 (int(pts[1][0]), int(pts[1][1])), (255, 255, 0), 1)
+                    if len(pts) >= 3:
+                        cv2.line(display, (int(pts[1][0]), int(pts[1][1])),
+                                 (int(pts[2][0]), int(pts[2][1])), (255, 255, 0), 1)
+                elif self._draw_shape == "poly" and len(pts) > 0:
+                    for p in pts:
+                        cv2.circle(display, (int(p[0]), int(p[1])), 4, (0, 255, 255), -1)
+                    if len(pts) >= 2:
+                        for i in range(len(pts) - 1):
+                            cv2.line(display, (int(pts[i][0]), int(pts[i][1])),
+                                     (int(pts[i+1][0]), int(pts[i+1][1])), (0, 255, 255), 1)
+                elif self._draw_shape == "measure" and len(pts) > 0:
+                    for p in pts:
+                        cv2.circle(display, (int(p[0]), int(p[1])), 4, (255, 200, 0), -1)
+                    if len(pts) >= 2:
+                        for i in range(len(pts) - 1):
+                            cv2.line(display, (int(pts[i][0]), int(pts[i][1])),
+                                     (int(pts[i+1][0]), int(pts[i+1][1])), (255, 200, 0), 1)
             h, w, c = display.shape
             qimg = QImage(display.data, w, h, w * 3, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(qimg)
@@ -213,6 +319,79 @@ class UnifiedViewer(QScrollArea):
         self._label.setPixmap(pixmap)
 
     def _on_mouse_press(self, event):
+        if self._draw_mode and self._raw_pixels is not None:
+            pos = event.position()
+            img_x = int((pos.x() - self._offset_x) / self._scale) if self._scale > 0 else 0
+            img_y = int((pos.y() - self._offset_y) / self._scale) if self._scale > 0 else 0
+            h, w = self._raw_pixels.shape[:2]
+            if 0 <= img_x < w and 0 <= img_y < h:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    if self._draw_shape in ("rect", "circle", "line"):
+                        if self._draw_state == 0:
+                            self._draw_points = [(img_x, img_y), (img_x, img_y)]
+                            self._draw_state = 1
+                            self._draw_complete = False
+                    elif self._draw_shape == "angle":
+                        self._draw_points.append((img_x, img_y))
+                        self._draw_state = len(self._draw_points)
+                        if self._draw_state >= 3:
+                            # Compute angle: vertex = pt[1] (middle), rays from pt[0] and pt[2]
+                            a0 = np.array(self._draw_points[0])
+                            a1 = np.array(self._draw_points[1])
+                            a2 = np.array(self._draw_points[2])
+                            v1 = a0 - a1
+                            v2 = a2 - a1
+                            n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+                            if n1 > 0 and n2 > 0:
+                                cos_ang = np.dot(v1, v2) / (n1 * n2)
+                                cos_ang = max(-1.0, min(1.0, cos_ang))
+                                angle_deg = np.degrees(np.arccos(cos_ang))
+                            else:
+                                angle_deg = 0.0
+                            self._draw_complete = True
+                            self.manual_roi_completed.emit({
+                                "shape": self._draw_shape,
+                                "points": self._draw_points[:],
+                                "angle_deg": round(angle_deg, 1),
+                            })
+                    elif self._draw_shape == "poly":
+                        self._draw_points.append((img_x, img_y))
+                        self._draw_complete = False
+                    elif self._draw_shape == "measure":
+                        self._draw_points.append((img_x, img_y))
+                        self._draw_complete = False
+                elif event.button() == Qt.MouseButton.RightButton:
+                    if self._draw_shape == "poly" and len(self._draw_points) >= 3:
+                        self._draw_points.append(self._draw_points[0])
+                        self._draw_complete = True
+                        self.manual_roi_completed.emit({"shape": self._draw_shape, "points": self._draw_points[:]})
+                    elif self._draw_shape == "measure" and len(self._draw_points) >= 2:
+                        total_px = sum(
+                            np.sqrt((self._draw_points[i][0] - self._draw_points[i-1][0])**2 +
+                                    (self._draw_points[i][1] - self._draw_points[i-1][1])**2)
+                            for i in range(1, len(self._draw_points)))
+                        sx, sy = self._get_pixel_spacing()
+                        sp_avg = np.sqrt(sx * sy)
+                        total_mm = total_px * sp_avg
+                        self._draw_complete = True
+                        self.manual_roi_completed.emit({
+                            "shape": self._draw_shape,
+                            "points": self._draw_points[:],
+                            "length_px": round(total_px, 1),
+                            "length_mm": round(total_mm, 2),
+                        })
+                    elif self._draw_shape in ("rect", "circle", "line") and self._draw_state == 1:
+                        data = {"shape": self._draw_shape, "points": self._draw_points[:]}
+                        if self._draw_shape == "line":
+                            p0, p1 = self._draw_points[0], self._draw_points[1]
+                            len_px = np.sqrt((p1[0]-p0[0])**2 + (p1[1]-p0[1])**2)
+                            sx, sy = self._get_pixel_spacing()
+                            data["length_px"] = round(len_px, 1)
+                            data["length_mm"] = round(len_px * np.sqrt(sx * sy), 2)
+                        self._draw_complete = True
+                        self.manual_roi_completed.emit(data)
+                self._refresh_display()
+            return
         if not self._sam_mode or self._raw_pixels is None:
             return
         pos = event.position()
@@ -228,6 +407,23 @@ class UnifiedViewer(QScrollArea):
             self._point_labels.append(label)
             self._refresh_display()
             self.sam_point_added.emit(img_x, img_y, label)
+
+    def _on_mouse_move(self, event):
+        if not self._draw_mode or self._draw_state != 1 or self._draw_complete:
+            return
+        if self._draw_shape not in ("rect", "circle", "line"):
+            return
+        pos = event.position()
+        img_x = int((pos.x() - self._offset_x) / self._scale) if self._scale > 0 else 0
+        img_y = int((pos.y() - self._offset_y) / self._scale) if self._scale > 0 else 0
+        h, w = self._raw_pixels.shape[:2]
+        img_x = max(0, min(img_x, w - 1))
+        img_y = max(0, min(img_y, h - 1))
+        self._draw_points[-1] = (img_x, img_y)
+        self._refresh_display()
+
+    def _on_mouse_release(self, event):
+        pass
 
     @property
     def current_path(self):

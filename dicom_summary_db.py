@@ -50,6 +50,8 @@ def init_db():
             slice_thickness TEXT,
             pixel_spacing TEXT,
             modality TEXT,
+            length_mm REAL,
+            angle_deg REAL,
             kvp TEXT,
             xray_tube_current TEXT,
             exposure_time TEXT,
@@ -103,6 +105,8 @@ def init_db():
         "gantry_detector_tilt": "TEXT",
         "table_height": "TEXT",
         "roi_description": "TEXT",
+        "length_mm": "REAL",
+        "angle_deg": "REAL",
     }
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(roi_records)").fetchall()}
     for col, ctype in new_cols.items():
@@ -182,6 +186,8 @@ def insert_roi(patient_name: str,
                saved_png: str = None,
                saved_json: str = None,
                roi_description: str = None,
+               length_mm: float = None,
+               angle_deg: float = None,
                study_date: str = None,
                study_time: str = None,
                study_description: str = None,
@@ -223,15 +229,15 @@ def insert_roi(patient_name: str,
             ctdivol, dlp, spiral_pitch_factor,
             gantry_detector_tilt, table_height,
             area_mm2, mean_hu, std_hu, min_hu, max_hu, median_hu, pixel_count,
-            metadata_json, stats_json, contour_json, saved_png, saved_json, roi_description
+            metadata_json, stats_json, contour_json, saved_png, saved_json, roi_description, length_mm, angle_deg
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?,
                   ?, ?,
                   ?, ?, ?, ?, ?, ?,
-                   ?, ?, ?, ?, ?,
-                   ?)
+                  ?, ?, ?, ?, ?,
+                  ?, ?, ?)
     """, (
         pid,
         study_date or "",
@@ -275,6 +281,8 @@ def insert_roi(patient_name: str,
         saved_png or "",
         saved_json or "",
         roi_description or "",
+        length_mm,
+        angle_deg,
     ))
     record_id = cur.lastrowid
     conn.commit()

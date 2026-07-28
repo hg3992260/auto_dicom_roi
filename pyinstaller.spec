@@ -3,8 +3,26 @@
 
 import os, sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path('.').absolute()
+
+added_files = [
+    ('logo/Gemini_Generated_Image_egithcegithcegit.png', 'logo'),
+]
+
+# PyCt6 theme JSON and assets
+import PyCt6 as _pyct6
+_pyct6_dir = Path(_pyct6.__file__).parent
+for _subdir, _target in [
+    ('widgets/themes', 'PyCt6/widgets/themes'),
+    ('widgets/images', 'PyCt6/widgets/images'),
+    ('windows/images', 'PyCt6/windows/images'),
+]:
+    _d = _pyct6_dir / _subdir
+    if _d.exists():
+        for _f in _d.iterdir():
+            added_files.append((str(_f), _target))
 
 # RapidOCR ONNX model files
 rapidocr_dir = None
@@ -13,33 +31,24 @@ for p in sys.path:
     if candidate.exists():
         rapidocr_dir = candidate
         break
-
-added_files = [
-    ('logo/Gemini_Generated_Image_egithcegithcegit.png', 'logo'),
-]
-
 if rapidocr_dir:
     for onnx_file in rapidocr_dir.glob('*.onnx'):
         added_files.append((str(onnx_file), 'rapidocr_onnxruntime/models'))
 
 # Hidden imports for lazy-loaded modules
 hidden_imports = [
-    'pydicom', 'numpy', 'cv2', 'opencv-python',
-    'PIL', 'skimage',
+    'pydicom', 'numpy', 'cv2', 'PIL', 'skimage',
     'rapidocr_onnxruntime',
     'rapidocr_onnxruntime.ch_ppocr_det',
     'rapidocr_onnxruntime.ch_ppocr_rec',
     'rapidocr_onnxruntime.ch_ppocr_cls',
     'rapidocr_onnxruntime.utils',
-    'onnxruntime',
-    'PySide6',
-    'PyCt6',
-    'openpyxl',
-    'scipy',
+    'onnxruntime', 'openpyxl', 'scipy',
     'segment_anything',
 ]
 
 datas = [(str(Path(src)), dst) for src, dst in added_files]
+datas += collect_data_files('PySide6')
 
 a = Analysis(
     ['main.py'],

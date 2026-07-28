@@ -46,6 +46,7 @@ class SamPanel(QWidget):
 
     def set_viewer(self, viewer):
         self._viewer = viewer
+        viewer.manual_roi_completed.connect(self._on_manual_roi_completed)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -97,6 +98,39 @@ class SamPanel(QWidget):
         nav_row.addWidget(self.nav_label)
         nav_row.addStretch()
         layout.addLayout(nav_row)
+
+        # Manual ROI controls
+        manual_row = QHBoxLayout()
+        manual_row.setSpacing(4)
+        self.manual_btn = CButton(
+            master=self, text="手动ROI", width=70, height=24,
+            font_size=10,
+            background_color=(C_WARN, C_WARN),
+            hover_color=("#B45309", "#B45309"),
+            text_color=("white", "white"))
+        self.manual_btn.button().clicked.connect(self._on_manual_roi)
+        manual_row.addWidget(self.manual_btn.button())
+        from PySide6.QtWidgets import QComboBox
+        self.shape_cb = QComboBox()
+        self._shape_map = {"矩形": "rect", "圆形": "circle", "直线": "line", "角度": "angle", "多边形": "poly", "多点测量": "measure"}
+        self.shape_cb.addItems(list(self._shape_map.keys()))
+        self.shape_cb.setCurrentText("矩形")
+        self.shape_cb.setStyleSheet(f"font-size: 10px; padding: 1px 4px;")
+        self.shape_cb.currentTextChanged.connect(self._on_shape_changed)
+        self.shape_cb.setVisible(False)
+        manual_row.addWidget(self.shape_cb)
+        self.manual_done_btn = CButton(
+            master=self, text="完成", width=50, height=24, font_size=10)
+        self.manual_done_btn.button().clicked.connect(self._on_manual_done)
+        self.manual_done_btn.button().setVisible(False)
+        manual_row.addWidget(self.manual_done_btn.button())
+        self.manual_clear_btn = CButton(
+            master=self, text="清除", width=50, height=24, font_size=10)
+        self.manual_clear_btn.button().clicked.connect(self._on_manual_clear)
+        self.manual_clear_btn.button().setVisible(False)
+        manual_row.addWidget(self.manual_clear_btn.button())
+        manual_row.addStretch()
+        layout.addLayout(manual_row)
 
         # Action buttons
         act_row = QHBoxLayout()
@@ -324,11 +358,90 @@ class SamPanel(QWidget):
             self._viewer.clear_mask()
         self.status_label.setText("标记已清除")
 
-    def _on_save_mask(self):
-        if self._current_mask is None or self._current_file is None:
+    # ---- Manual ROI ----
+    def _on_manual_roi(self):
+        if self._viewer is None or self._viewer._raw_pixels is None:
             return
+        shape_label = self.shape_cb.currentText()
+        shape = self._shape_map.get(shape_label, "rect")
+        showing = self.shape_cb.isVisible()
+        self.shape_cb.setVisible(not showing)
+        self.manual_done_btn.button().setVisible(not showing)
+        self.manual_clear_btn.button().setVisible(not showing)
+        if showing:
+            self._viewer.set_manual_draw("", False)
+            self._viewer.set_sam_mode(True)
+            self.manual_btn.button().setText("手动ROI")
+            self.manual_btn.button().setStyleSheet(
+                f"background-color: {C_WARN}; color: white; font-size: 10px;")
+            self.status_label.setText("手动ROI已关闭")
+        else:
+            self._viewer.set_sam_mode(False)
+            self._viewer.set_manual_draw(shape, True)
+            self.manual_btn.button().setText("关闭手动")
+            self.manual_btn.button().setStyleSheet(
+                f"background-color: {C_RED}; color: white; font-size: 10px;")
+            hints = {"rect": "左键点角→拖动→右键完成", "circle": "左键圆心→拖动半径→右键完成",
+                     "line": "左键起点→拖动→右键完成", "angle": "3次左键: 边点1→顶点→边点2",
+                     "poly": "左键加点→右键闭合", "measure": "左键加点→右键结束测量"}
+            self.status_label.setText(f"手动ROI [{shape_label}]: {hints.get(shape, '')}")
+            self._manual_roi_data = None
+
+    def _on_manual_roi_completed(self, data):
+        self._manual_roi_data = data
+        shape = self._shape_map.get(self.shape_cb.currentText(), "")
+        extra = ""
+        if data.get("angle_deg"):
+            extra = f" ∠{data['angle_deg']}°"
+        elif data.get("length_mm"):
+            extra = f" {data['length_px']}px ({data['length_mm']}mm)"
+        self.status_label.setText(f"手动ROI完成 [{shape}]: {len(data['points'])} pts{extra} — 可保存")
+        self.int_save_btn.button().setEnabled(True)
+
+    def _on_manual_done(self):
+        if self._viewer is None:
+            return
+        self._viewer.set_manual_draw("", False)
+        self._on_manual_roi()
+
+    def _on_manual_clear(self):
+        self._manual_roi_data = None
+        self.int_save_btn.button().setEnabled(False)
+        if self._viewer is not None:
+            shape = self._shape_map.get(self.shape_cb.currentText(), "rect")
+            self._viewer.set_manual_draw(shape, True)
+        self.status_label.setText(f"手动ROI: 已清除")
+
+    def _on_shape_changed(self, text):
+        self._manual_roi_data = None
+        self.int_save_btn.button().setEnabled(False)
+        if self._viewer is not None and self.shape_cb.isVisible():
+            shape = self._shape_map.get(text, "rect")
+            self._viewer.set_manual_draw(shape, True)
+            hints = {"rect": "左键点角→拖动→右键完成", "circle": "左键圆心→拖动半径→右键完成",
+                     "line": "左键起点→拖动→右键完成", "angle": "3次左键: 边点1→顶点→边点2",
+                     "poly": "左键加点→右键闭合", "measure": "左键加点→右键结束测量"}
+            self.status_label.setText(f"手动ROI [{text}]: {hints.get(shape, '')}")
+
+    def _on_save_mask(self):
+        is_manual = hasattr(self, '_manual_roi_data') and self._manual_roi_data is not None
+        if not is_manual and (self._current_mask is None or self._current_file is None):
+            return
+        if is_manual and (self._viewer is None or self._current_file is None):
+            return
+        if is_manual:
+            mask_data = self._viewer.get_draw_mask()
+            if mask_data is None or mask_data.sum() == 0:
+                QMessageBox.warning(self, "提示", "手动ROI区域为空")
+                return
+            mask_to_save = mask_data > 0
+            method_label = f"manual_{self._manual_roi_data['shape']}"
+        else:
+            mask_to_save = self._current_mask
+            method_label = "sam_interactive"
+
         meta = self._extract_dicom_metadata(self._current_file)
-        stats = self._compute_roi_stats(self._current_file, self._current_mask)
+        stats = self._compute_roi_stats(self._current_file, mask_to_save)
 
         meta_lines = ["═════ DICOM 元数据 ═════"]
         for k, v in meta.items():
@@ -336,7 +449,13 @@ class SamPanel(QWidget):
         if not meta:
             meta_lines.append("  (无元数据)")
         stats_lines = ["───── ROI 统计 ─────"]
-        if "error" in stats:
+        if is_manual and self._manual_roi_data.get("shape") in ("line", "measure"):
+            d = self._manual_roi_data
+            stats_lines.append(f"  长度(px): {d.get('length_px', '-')}")
+            stats_lines.append(f"  长度(mm): {d.get('length_mm', '-')}")
+        elif is_manual and self._manual_roi_data.get("shape") == "angle":
+            stats_lines.append(f"  角度: {self._manual_roi_data.get('angle_deg', '-')}°")
+        elif "error" in stats:
             stats_lines.append(f"  {stats['error']}")
         else:
             for k in ["像素数", "面积(mm²)", "均值", "标准差", "最小值", "最大值", "中位数"]:
@@ -367,8 +486,8 @@ class SamPanel(QWidget):
 
         if self._viewer is not None and self._viewer.image_rgb is not None:
             overlay = self._viewer.image_rgb.copy()
-            m = self._current_mask
-            if m.shape[:2] != overlay.shape[:2]:
+            m = mask_to_save
+            if m is not None and m.shape[:2] != overlay.shape[:2]:
                 m = cv2.resize(m.astype(np.uint8), (overlay.shape[1], overlay.shape[0])).astype(bool)
             color_mask = np.zeros_like(overlay)
             color_mask[m] = [0, 255, 0]
@@ -380,7 +499,7 @@ class SamPanel(QWidget):
         result = {
             "file": self._current_file,
             "timestamp": time.strftime("%Y%m%d_%H%M%S"),
-            "source": "magic_seg_interactive",
+            "source": "magic_seg_interactive" if not is_manual else f"manual_{self._manual_roi_data['shape']}",
             "metadata": meta,
             "roi_statistics": stats,
         }
@@ -389,12 +508,49 @@ class SamPanel(QWidget):
         QMessageBox.information(self, "保存成功", f"ROI已保存至:\n{json_path}\n{png_path}")
         self.status_label.setText(f"已保存: {base}")
 
-        dicom_summary_db.add_roi_from_sam(
-            file_path=self._current_file,
-            metadata=meta,
-            stats=stats,
-            contour=self._current_mask.tolist() if self._current_mask is not None else None,
-            saved_png=png_path,
-            saved_json=json_path,
-            roi_description=roi_desc,
-        )
+        if is_manual and self._manual_roi_data.get("shape") in ("line", "measure", "angle"):
+            shape = self._manual_roi_data["shape"]
+            d = self._manual_roi_data
+            if shape in ("line", "measure"):
+                stats["长度(px)"] = d.get("length_px", "-")
+                stats["长度(mm)"] = d.get("length_mm", "-")
+            if shape == "angle":
+                stats["角度(°)"] = d.get("angle_deg", "-")
+            full_meta = dicom_summary_db.extract_dicom_meta(self._current_file)
+            dicom_summary_db.insert_roi(
+                patient_name=str(meta.get("患者姓名", meta.get("PatientName", "Unknown"))),
+                patient_id=str(meta.get("患者ID", meta.get("PatientID", ""))),
+                file_path=self._current_file,
+                method=f"manual_{shape}",
+                source=f"manual_{shape}",
+                metadata=meta,
+                stats=stats,
+                area_mm2=d.get("length_mm") if shape in ("line", "measure") else d.get("angle_deg"),
+                pixel_count=len(self._manual_roi_data.get("points", [])),
+                roi_description=roi_desc,
+                saved_png=png_path,
+                saved_json=json_path,
+                study_date=str(meta.get("检查日期", "")),
+                study_time=full_meta.get("study_time", ""),
+                study_description=str(meta.get("检查描述", "")),
+                series_description=str(meta.get("系列描述", "")),
+                manufacturer=full_meta.get("manufacturer", ""),
+                manufacturer_model=full_meta.get("manufacturer_model", ""),
+                body_part=full_meta.get("body_part", ""),
+                protocol_name=full_meta.get("protocol_name", ""),
+                modality=full_meta.get("modality", ""),
+                length_mm=d.get("length_mm") if shape in ("line", "measure") else None,
+                angle_deg=d.get("angle_deg") if shape == "angle" else None,
+            )
+        else:
+            dicom_summary_db.add_roi_from_sam(
+                file_path=self._current_file,
+                metadata=meta,
+                stats=stats,
+                contour=mask_to_save.tolist() if mask_to_save is not None else None,
+                saved_png=png_path,
+                saved_json=json_path,
+                roi_description=roi_desc,
+            )
+        self._manual_roi_data = None
+        self._current_mask = None
