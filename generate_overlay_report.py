@@ -6,8 +6,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from roi_engine import RoiEngine
 from ocr_engine import OcrEngine
 
-BASE_DIR = r"F:\RSNA\面神经已处理图像\面神经已处理图像\miao"
-OUTPUT_HTML = r"F:\RSNA\dicom_analysis_tool\output\overlay_report.html"
+BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "面神经已处理图像", "面神经已处理图像", "miao")
+BASE_DIR = os.path.abspath(BASE_DIR) if os.path.exists(BASE_DIR) else ""
+
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+OUTPUT_HTML = os.path.join(OUTPUT_DIR, "overlay_report.html")
 
 engine = RoiEngine()
 ocr = OcrEngine()

@@ -60,9 +60,6 @@ class SamEngine:
             os.path.join(base, "models", "sam_vit_h_4b8939.pth"),
             os.path.join(os.getcwd(), "models", "sam_vit_b_01ec64.pth"),
             os.path.join(os.getcwd(), "models", "sam_vit_h_4b8939.pth"),
-            r"F:\RSNA\medical_imaging_workflow\models\segment-anything\sam_vit_b_01ec64.pth",
-            r"F:\RSNA\medical_imaging_workflow\models\sam_vit_b_01ec64.pth",
-            r"F:\RSNA\segment-anything-main\sam_vit_b_01ec64.pth",
         ]
         for p in search_paths:
             if os.path.exists(p):
