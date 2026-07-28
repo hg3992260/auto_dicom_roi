@@ -55,11 +55,14 @@ class SamEngine:
 
     def _find_checkpoint(self):
         base = os.path.dirname(os.path.abspath(__file__))
+        exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
         search_paths = [
-            os.path.join(base, "models", "sam_vit_b_01ec64.pth"),
-            os.path.join(base, "models", "sam_vit_h_4b8939.pth"),
+            os.path.join(base, "..", "models", "sam_vit_b_01ec64.pth"),
+            os.path.join(base, "..", "models", "sam_vit_h_4b8939.pth"),
             os.path.join(os.getcwd(), "models", "sam_vit_b_01ec64.pth"),
             os.path.join(os.getcwd(), "models", "sam_vit_h_4b8939.pth"),
+            os.path.join(exe_dir, "models", "sam_vit_b_01ec64.pth"),
+            os.path.join(exe_dir, "models", "sam_vit_h_4b8939.pth"),
         ]
         for p in search_paths:
             if os.path.exists(p):

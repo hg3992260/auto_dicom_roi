@@ -3,7 +3,7 @@
 
 import os, sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 ROOT = Path('.').absolute()
 
@@ -25,35 +25,56 @@ for _subdir, _target in [
             added_files.append((str(_f), _target))
 
 # RapidOCR ONNX model files
-rapidocr_dir = None
 for p in sys.path:
     candidate = Path(p) / 'rapidocr_onnxruntime' / 'models'
     if candidate.exists():
-        rapidocr_dir = candidate
+        for onnx_file in candidate.glob('*.onnx'):
+            added_files.append((str(onnx_file), 'rapidocr_onnxruntime/models'))
         break
-if rapidocr_dir:
-    for onnx_file in rapidocr_dir.glob('*.onnx'):
-        added_files.append((str(onnx_file), 'rapidocr_onnxruntime/models'))
 
-# Hidden imports for lazy-loaded modules
+# Hidden imports
 hidden_imports = [
-    'pydicom', 'numpy', 'cv2', 'PIL', 'skimage',
+    'pydicom', 'pydicom.encaps', 'pydicom.valuerep',
+    'numpy', 'numpy._core', 'numpy.core',
+    'cv2', 'PIL', 'PIL.Image', 'skimage',
     'rapidocr_onnxruntime',
     'rapidocr_onnxruntime.ch_ppocr_det',
+    'rapidocr_onnxruntime.ch_ppocr_det.text_detect',
     'rapidocr_onnxruntime.ch_ppocr_rec',
+    'rapidocr_onnxruntime.ch_ppocr_rec.text_recognize',
     'rapidocr_onnxruntime.ch_ppocr_cls',
+    'rapidocr_onnxruntime.ch_ppocr_cls.text_cls',
     'rapidocr_onnxruntime.utils',
-    'onnxruntime', 'openpyxl', 'scipy',
+    'rapidocr_onnxruntime.main',
+    'onnxruntime',
+    'onnxruntime.capi',
+    'onnxruntime.providers',
+    'openpyxl', 'scipy', 'scipy.ndimage',
     'segment_anything',
+    'segment_anything.modeling',
+    'segment_anything.modeling.sam',
+    'segment_anything.modeling.image_encoder',
+    'segment_anything.modeling.mask_decoder',
+    'segment_anything.modeling.prompt_encoder',
+    'segment_anything.modeling.transformer',
+    'segment_anything.modeling.common',
+    'segment_anything.utils',
+    'segment_anything.utils.amg',
+    'segment_anything.utils.transforms',
+    'segment_anything.utils.onnx',
 ]
 
 datas = [(str(Path(src)), dst) for src, dst in added_files]
 datas += collect_data_files('PySide6')
+datas += collect_data_files('rapidocr_onnxruntime')
+datas += collect_data_files('onnxruntime')
+
+binaries = collect_dynamic_libs('onnxruntime')
 
 a = Analysis(
     ['main.py'],
     pathex=[str(ROOT)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
