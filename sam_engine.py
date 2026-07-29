@@ -7,12 +7,21 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 import numpy as np
 import cv2
 
+_torch_import_error = None
+_torch_diag = ""
 try:
     import torch
     HAS_TORCH = True
-except ImportError:
+except ImportError as e:
     torch = None
     HAS_TORCH = False
+    _torch_import_error = str(e)
+    # Try to get more diagnostic info
+    try:
+        import traceback
+        _torch_diag = traceback.format_exc()[-300:]
+    except Exception:
+        pass
 
 try:
     from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
@@ -90,7 +99,8 @@ class SamEngine:
         if not HAS_PYDICOM:
             return "pydicom not installed"
         if not HAS_TORCH:
-            return "PyTorch not installed"
+            detail = _torch_diag or _torch_import_error or '未安装'
+            return f"PyTorch不可用: {detail[:120]}"
         if not HAS_SAM:
             return "segment-anything not installed"
         if not self.checkpoint_path:

@@ -161,8 +161,8 @@ class SamPanel(QWidget):
 
     def _browse_model(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择SAM模型文件",
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models"),
+            self, "选择SAM模型权重文件",
+            os.path.expanduser("~"),
             "PyTorch模型 (*.pth);;所有文件 (*.*)")
         if path:
             self._selected_model_path = path

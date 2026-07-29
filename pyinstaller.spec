@@ -3,7 +3,7 @@
 
 import os, sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 ROOT = Path('.').absolute()
 
@@ -65,14 +65,18 @@ hidden_imports = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.serialization', 'torch.multiprocessing',
 ]
+# Collect all torch submodules (required for PyInstaller compatibility)
+hidden_imports += collect_submodules('torch')
+hidden_imports += collect_submodules('segment_anything')
 
 datas = [(str(Path(src)), dst) for src, dst in added_files]
 datas += collect_data_files('PySide6')
 datas += collect_data_files('rapidocr_onnxruntime')
 datas += collect_data_files('onnxruntime')
 
-binaries = collect_dynamic_libs('onnxruntime')
-binaries += collect_dynamic_libs('torch')
+datas += collect_data_files('segment_anything')
+binaries = collect_dynamic_libs('torch')
+binaries += collect_dynamic_libs('onnxruntime')
 
 a = Analysis(
     ['main.py'],
