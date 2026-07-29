@@ -13,6 +13,7 @@ from PyCt6 import CButton
 from roi_engine import RoiEngine
 from ocr_engine import OcrEngine
 import dicom_summary_db
+from app_paths import get_output_dir
 
 C_ACCENT = "#2563EB"
 C_ACCENT_HOVER = "#1D4ED8"
@@ -90,8 +91,7 @@ class RoiPanel(QWidget):
         self.engine = RoiEngine()
         self.worker = None
         self._viewer = None
-        self._output_dir = os.path.join(os.path.dirname(
-            os.path.abspath(__file__)), "..", "output")
+        self._output_dir = str(get_output_dir())
         self._setup_ui()
 
     def set_viewer(self, viewer):

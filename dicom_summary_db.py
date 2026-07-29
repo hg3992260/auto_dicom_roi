@@ -4,8 +4,9 @@ import sqlite3
 import time
 from typing import Dict, List, Optional, Any
 
+from app_paths import get_db_path
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roi_summary.db")
+DB_PATH = str(get_db_path())
 
 
 def get_connection():

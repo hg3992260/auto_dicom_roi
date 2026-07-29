@@ -1,11 +1,89 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for DICOM Analysis Tool"""
 
-import os, sys
+import importlib
+import os
+import platform
+import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-ROOT = Path('.').absolute()
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
+
+ROOT = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd().resolve()
+
+
+def require_module(module_name):
+    """Fail fast during build instead of shipping a broken package."""
+    try:
+        return importlib.import_module(module_name)
+    except Exception as exc:
+        raise SystemExit(
+            f"[pyinstaller.spec] Missing or broken dependency: {module_name}: {exc}"
+        ) from exc
+
+
+def safe_collect_submodules(module_name):
+    try:
+        return collect_submodules(module_name)
+    except Exception as exc:
+        raise SystemExit(
+            f"[pyinstaller.spec] Failed to collect submodules for {module_name}: {exc}"
+        ) from exc
+
+
+def extend_unique(target, items):
+    seen = set(target)
+    for item in items:
+        if item not in seen:
+            target.append(item)
+            seen.add(item)
+
+
+def extend_pairs_unique(target, items):
+    seen = set(target)
+    for item in items:
+        if item not in seen:
+            target.append(item)
+            seen.add(item)
+
+
+def merge_package_all(package_name, datas_target, binaries_target, hidden_target):
+    datas_pkg, binaries_pkg, hidden_pkg = collect_all(package_name)
+    extend_pairs_unique(datas_target, datas_pkg)
+    extend_pairs_unique(binaries_target, binaries_pkg)
+    extend_unique(hidden_target, hidden_pkg)
+
+
+def merge_package_files(package_name, datas_target, binaries_target):
+    extend_pairs_unique(datas_target, collect_data_files(package_name))
+    try:
+        extend_pairs_unique(binaries_target, collect_dynamic_libs(package_name))
+    except Exception:
+        pass
+
+
+IS_MAC = platform.system() == "Darwin"
+
+require_module("torch")
+require_module("segment_anything")
+require_module("onnxruntime")
+require_module("rapidocr_onnxruntime")
+require_module("openpyxl")
+require_module("et_xmlfile")
+require_module("pydicom")
+require_module("skimage")
+require_module("imageio")
+require_module("tifffile")
+require_module("lazy_loader")
+require_module("yaml")
+require_module("tqdm")
+require_module("shapely")
+require_module("pyclipper")
 
 added_files = [
     ('logo/Gemini_Generated_Image_egithcegithcegit.png', 'logo'),
@@ -49,6 +127,14 @@ hidden_imports = [
     'onnxruntime',
     'onnxruntime.capi',
     'onnxruntime.providers',
+    'et_xmlfile',
+    'imageio',
+    'tifffile',
+    'lazy_loader',
+    'yaml',
+    'tqdm',
+    'shapely',
+    'pyclipper',
     'openpyxl', 'scipy', 'scipy.ndimage',
     'segment_anything',
     'segment_anything.build_sam',
@@ -68,40 +154,52 @@ hidden_imports = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.serialization', 'torch.multiprocessing',
 ]
-# Collect all torch submodules (required for PyInstaller compatibility)
-try:
-    hidden_imports += collect_submodules('torch')
-except ImportError:
-    pass
-try:
-    hidden_imports += collect_submodules('segment_anything')
-except ImportError:
-    pass
+# Collect package submodules aggressively for bundled runtime imports.
+extend_unique(hidden_imports, safe_collect_submodules('torch'))
+extend_unique(hidden_imports, safe_collect_submodules('segment_anything'))
+extend_unique(hidden_imports, safe_collect_submodules('onnxruntime'))
+extend_unique(hidden_imports, safe_collect_submodules('rapidocr_onnxruntime'))
 
 datas = [(str(Path(src)), dst) for src, dst in added_files]
 datas += collect_data_files('PySide6')
 datas += collect_data_files('rapidocr_onnxruntime')
 datas += collect_data_files('onnxruntime')
-
 datas += collect_data_files('segment_anything')
+datas += collect_data_files('torch')
 
 # torch: collect all binaries and data files aggressively
 binaries = collect_dynamic_libs('torch')
 binaries += collect_dynamic_libs('onnxruntime')
 
-# Explicitly add torch lib directory DLLs (PyInstaller sometimes misses these)
-try:
-    import torch as _torch_check
-    _torch_dir = Path(_torch_check.__file__).parent
-    _torch_lib = _torch_dir / 'lib'
-    if _torch_lib.exists():
-        for _dll in _torch_lib.glob('*.dll'):
-            binaries.append((str(_dll), '.'))
-        for _dll in _torch_lib.glob('*.so'):
-            binaries.append((str(_dll), '.'))
-    datas += collect_data_files('torch')
-except ImportError:
-    pass  # torch not installed, skip DLL collection
+for package_name in [
+    'openpyxl',
+    'pydicom',
+    'skimage',
+]:
+    merge_package_all(package_name, datas, binaries, hidden_imports)
+
+for package_name in [
+    'et_xmlfile',
+    'imageio',
+    'tifffile',
+    'lazy_loader',
+    'yaml',
+    'tqdm',
+    'shapely',
+    'pyclipper',
+]:
+    merge_package_files(package_name, datas, binaries)
+
+# Explicitly add torch native libraries into torch/lib.
+# PyTorch resolves several binaries relative to the package directory,
+# so flattening them into "." can cause runtime import failures.
+_torch_check = require_module("torch")
+_torch_dir = Path(_torch_check.__file__).parent
+_torch_lib = _torch_dir / 'lib'
+if _torch_lib.exists():
+    for pattern in ('*.dll', '*.so', '*.dylib', '*.pyd'):
+        for native_lib in _torch_lib.glob(pattern):
+            binaries.append((str(native_lib), 'torch/lib'))
 
 a = Analysis(
     ['main.py'],
@@ -128,7 +226,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX frequently breaks torch/onnxruntime native libraries.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -141,8 +240,7 @@ exe = EXE(
 )
 
 # On macOS, wrap EXE in a .app bundle
-import platform
-if platform.system() == 'Darwin':
+if IS_MAC:
     app = BUNDLE(
         exe,
         name='DICOM_Analysis_Tool.app',

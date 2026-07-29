@@ -7,8 +7,11 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 import numpy as np
 import cv2
 
+from app_paths import iter_model_search_dirs
+
 _torch_import_error = None
 _torch_diag = ""
+_sam_import_error = None
 try:
     import torch
     HAS_TORCH = True
@@ -26,8 +29,9 @@ except ImportError as e:
 try:
     from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
     HAS_SAM = True
-except ImportError:
+except ImportError as e:
     HAS_SAM = False
+    _sam_import_error = str(e)
 
 try:
     import pydicom
@@ -63,18 +67,13 @@ class SamEngine:
         self._find_checkpoint()
 
     def _find_checkpoint(self):
-        if getattr(sys, 'frozen', False):
-            base = os.path.dirname(sys.executable)
-        else:
-            base = os.path.dirname(os.path.abspath(__file__))
-        search_paths = [
-            os.path.join(base, "models", "sam_vit_b_01ec64.pth"),
-            os.path.join(base, "models", "sam_vit_h_4b8939.pth"),
-            os.path.join(base, "models", "sam_vit_l_0b3195.pth"),
-            os.path.join(os.getcwd(), "models", "sam_vit_b_01ec64.pth"),
-            os.path.join(os.getcwd(), "models", "sam_vit_h_4b8939.pth"),
-            os.path.join(os.getcwd(), "models", "sam_vit_l_0b3195.pth"),
-        ]
+        search_paths = []
+        for model_dir in iter_model_search_dirs():
+            search_paths.extend([
+                os.path.join(model_dir, "sam_vit_b_01ec64.pth"),
+                os.path.join(model_dir, "sam_vit_h_4b8939.pth"),
+                os.path.join(model_dir, "sam_vit_l_0b3195.pth"),
+            ])
         for p in search_paths:
             if os.path.exists(p):
                 self.checkpoint_path = p
@@ -108,7 +107,8 @@ class SamEngine:
             detail = _torch_diag or _torch_import_error or '未安装'
             return f"PyTorch不可用: {detail[:120]}"
         if not HAS_SAM:
-            return "segment-anything not installed"
+            detail = _sam_import_error or "unknown import error"
+            return f"segment-anything不可用: {detail[:120]}"
         if not self.checkpoint_path:
             return "SAM checkpoint not found"
         if self.sam is not None:

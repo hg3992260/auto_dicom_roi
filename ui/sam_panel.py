@@ -16,6 +16,7 @@ from PyCt6 import CButton
 
 from sam_engine import SamEngine
 import dicom_summary_db
+from app_paths import get_output_dir
 
 C_ACCENT = "#2563EB"
 C_ACCENT_HOVER = "#1D4ED8"
@@ -40,8 +41,7 @@ class SamPanel(QWidget):
         self._current_file = None
         self._file_list = []
         self._current_idx = 0
-        self._output_dir = os.path.join(os.path.dirname(
-            os.path.abspath(__file__)), "..", "output")
+        self._output_dir = str(get_output_dir())
         self._setup_ui()
 
     def set_viewer(self, viewer):
