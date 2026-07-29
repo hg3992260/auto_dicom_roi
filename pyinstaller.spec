@@ -5,6 +5,7 @@ import importlib
 import os
 import platform
 import sys
+import traceback
 from pathlib import Path
 
 from PyInstaller.utils.hooks import (
@@ -22,8 +23,12 @@ def require_module(module_name):
     try:
         return importlib.import_module(module_name)
     except Exception as exc:
+        detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
+        tb = traceback.format_exc(limit=12)
         raise SystemExit(
-            f"[pyinstaller.spec] Missing or broken dependency: {module_name}: {exc}"
+            f"[pyinstaller.spec] Missing or broken dependency: {module_name}\n"
+            f"reason: {detail or repr(exc)}\n"
+            f"traceback:\n{tb}"
         ) from exc
 
 
