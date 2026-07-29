@@ -66,8 +66,14 @@ hidden_imports = [
     'torch.serialization', 'torch.multiprocessing',
 ]
 # Collect all torch submodules (required for PyInstaller compatibility)
-hidden_imports += collect_submodules('torch')
-hidden_imports += collect_submodules('segment_anything')
+try:
+    hidden_imports += collect_submodules('torch')
+except ImportError:
+    pass
+try:
+    hidden_imports += collect_submodules('segment_anything')
+except ImportError:
+    pass
 
 datas = [(str(Path(src)), dst) for src, dst in added_files]
 datas += collect_data_files('PySide6')
@@ -81,16 +87,18 @@ binaries = collect_dynamic_libs('torch')
 binaries += collect_dynamic_libs('onnxruntime')
 
 # Explicitly add torch lib directory DLLs (PyInstaller sometimes misses these)
-import torch as _torch_check
-_torch_dir = Path(_torch_check.__file__).parent
-_torch_lib = _torch_dir / 'lib'
-if _torch_lib.exists():
-    for _dll in _torch_lib.glob('*.dll'):
-        binaries.append((str(_dll), '.'))
-    for _dll in _torch_lib.glob('*.so'):
-        binaries.append((str(_dll), '.'))
-# Also collect torch data files (configs, etc)
-datas += collect_data_files('torch')
+try:
+    import torch as _torch_check
+    _torch_dir = Path(_torch_check.__file__).parent
+    _torch_lib = _torch_dir / 'lib'
+    if _torch_lib.exists():
+        for _dll in _torch_lib.glob('*.dll'):
+            binaries.append((str(_dll), '.'))
+        for _dll in _torch_lib.glob('*.so'):
+            binaries.append((str(_dll), '.'))
+    datas += collect_data_files('torch')
+except ImportError:
+    pass  # torch not installed, skip DLL collection
 
 a = Analysis(
     ['main.py'],
