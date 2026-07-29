@@ -9,7 +9,7 @@ on:
 jobs:
   build-dmg:
     runs-on: macos-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -22,20 +22,35 @@ jobs:
           cache: pip
 
       - name: Install system deps
-        run: brew install create-dmg
+        run: brew install create-dmg libomp
 
       - name: Install Python deps
         run: |
-          pip install --upgrade pip
-          pip install PySide6 PyCt6 pydicom numpy scikit-image Pillow
-          pip install opencv-python-headless
-          pip install onnxruntime rapidocr-onnxruntime
-          pip install openpyxl scipy
-          pip install pyinstaller
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.6.0 torchvision==0.21.0
+          python -m pip install -r requirements.txt
+          python -m pip install pylibjpeg pylibjpeg-libjpeg pylibjpeg-openjpeg
+          python -m pip install opencv-python-headless
+          python -m pip install segment-anything
+          python -m pip install pyinstaller
+
+      - name: Verify Python environment
+        run: |
+          python -c "import sys; print(sys.executable)"
+          python -c "import torch; print('torch ok', torch.__version__, torch.__file__)"
+          python -c "import torchvision; print('torchvision ok', torchvision.__version__, torchvision.__file__)"
+          python -c "import segment_anything; print('segment_anything ok', segment_anything.__file__)"
+
+      - name: Download SAM models
+        run: |
+          mkdir -p models
+          curl -L -o models/sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 
       - name: Build .app bundle
         run: |
-          pyinstaller pyinstaller.spec --clean --noconfirm
+          python -m PyInstaller pyinstaller.spec --clean --noconfirm
+          mkdir -p dist/DICOM_Analysis_Tool.app/Contents/MacOS/models
+          cp models/sam_vit_b_01ec64.pth dist/DICOM_Analysis_Tool.app/Contents/MacOS/models/
           ls -la dist/
 
       - name: Create DMG
@@ -43,7 +58,8 @@ jobs:
           mkdir -p dmg_root
           cp -R dist/DICOM_Analysis_Tool.app dmg_root/
           mkdir -p dmg_root/models
-          echo "Place SAM models here (sam_vit_b_01ec64.pth, etc.)" > dmg_root/models/README.txt
+          cp models/sam_vit_b_01ec64.pth dmg_root/models/
+          echo "Other SAM models can also be placed in this folder." > dmg_root/models/README.txt
           create-dmg \
             --volname "DICOM Analysis Tool" \
             --window-pos 200 120 \

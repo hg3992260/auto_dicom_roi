@@ -20,25 +20,33 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install PySide6 PyCt6 pydicom numpy opencv-python scikit-image Pillow
-          pip install onnxruntime-directml rapidocr-onnxruntime
-          pip install openpyxl scipy
-          pip install torch segment-anything
-          pip install pyinstaller
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pylibjpeg pylibjpeg-libjpeg pylibjpeg-openjpeg
+          python -m pip install onnxruntime-directml
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 torchvision==0.21.0
+          python -m pip install segment-anything
+          python -m pip install pyinstaller
+      - name: Verify Python environment
+        run: |
+          python -c "import sys; print(sys.executable)"
+          python -c "import torch; print('torch ok', torch.__version__, torch.__file__)"
+          python -c "import torchvision; print('torchvision ok', torchvision.__version__, torchvision.__file__)"
+          python -c "import segment_anything; print('segment_anything ok', segment_anything.__file__)"
       - name: Download SAM models
         run: |
           mkdir models
           curl -L -o models/sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
       - name: Build EXE
-        run: pyinstaller pyinstaller.spec --clean --noconfirm
+        run: python -m PyInstaller pyinstaller.spec --clean --noconfirm
       - name: Package release
         run: |
           mkdir release
           copy dist\DICOM_Analysis_Tool.exe release\
           copy 交接文档.md release\
           mkdir release\models
-          echo "Place SAM models here (sam_vit_b_01ec64.pth, etc.)" > release\models\README.txt
+          copy models\sam_vit_b_01ec64.pth release\models\
+          echo Other SAM models can also be placed in this folder. > release\models\README.txt
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -65,25 +73,36 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install PySide6 PyCt6 pydicom numpy opencv-python scikit-image Pillow
-          pip install onnxruntime rapidocr-onnxruntime
-          pip install openpyxl scipy
-          pip install torch segment-anything
-          pip install pyinstaller
+          brew install libomp
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pylibjpeg pylibjpeg-libjpeg pylibjpeg-openjpeg
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 torchvision==0.21.0
+          python -m pip install segment-anything
+          python -m pip install pyinstaller
+
+      - name: Verify Python environment
+        run: |
+          python -c "import sys; print(sys.executable)"
+          python -c "import torch; print('torch ok', torch.__version__, torch.__file__)"
+          python -c "import torchvision; print('torchvision ok', torchvision.__version__, torchvision.__file__)"
+          python -c "import segment_anything; print('segment_anything ok', segment_anything.__file__)"
       - name: Download SAM models
         run: |
           mkdir -p models
           curl -L -o models/sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
       - name: Build macOS app
-        run: pyinstaller pyinstaller.spec --clean --noconfirm
+        run: python -m PyInstaller pyinstaller.spec --clean --noconfirm
       - name: Package DMG
         run: |
+          mkdir -p dist/DICOM_Analysis_Tool.app/Contents/MacOS/models
+          cp models/sam_vit_b_01ec64.pth dist/DICOM_Analysis_Tool.app/Contents/MacOS/models/
           mkdir -p release
           cp -R dist/DICOM_Analysis_Tool.app release/
           cp 交接文档.md release/
           mkdir -p release/models
-          echo "Place SAM models here (sam_vit_b_01ec64.pth, etc.)" > release/models/README.txt
+          cp models/sam_vit_b_01ec64.pth release/models/
+          echo Other SAM models can also be placed in this folder. > release/models/README.txt
           hdiutil create -volname "DICOM_Analysis_Tool" -srcfolder release -ov -format UDZO dicom_tool.dmg
       - name: Upload artifact
         uses: actions/upload-artifact@v4
