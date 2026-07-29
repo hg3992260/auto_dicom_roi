@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 import numpy as np
 import cv2
 
-from app_paths import iter_model_search_dirs
+from app_paths import iter_checkpoint_candidates, describe_model_search_paths
 
 _torch_import_error = None
 _torch_diag = ""
@@ -67,14 +67,8 @@ class SamEngine:
         self._find_checkpoint()
 
     def _find_checkpoint(self):
-        search_paths = []
-        for model_dir in iter_model_search_dirs():
-            search_paths.extend([
-                os.path.join(model_dir, "sam_vit_b_01ec64.pth"),
-                os.path.join(model_dir, "sam_vit_h_4b8939.pth"),
-                os.path.join(model_dir, "sam_vit_l_0b3195.pth"),
-            ])
-        for p in search_paths:
+        for candidate in iter_checkpoint_candidates():
+            p = str(candidate)
             if os.path.exists(p):
                 self.checkpoint_path = p
                 if "vit_h" in p:
@@ -110,10 +104,11 @@ class SamEngine:
             detail = _sam_import_error or "unknown import error"
             return f"segment-anything不可用: {detail[:120]}"
         if not self.checkpoint_path:
-            return "SAM checkpoint not found"
+            paths = " | ".join(describe_model_search_paths()[:3])
+            return f"SAM权重未找到，请放入 models 目录: {paths}" if paths else "SAM权重未找到"
         if self.sam is not None:
             return f"SAM {self.model_type} loaded on {self.device}"
-        return "Ready"
+        return f"已发现SAM权重: {os.path.basename(self.checkpoint_path)}"
 
     def load_model(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         if not self.available:

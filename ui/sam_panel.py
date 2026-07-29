@@ -36,6 +36,7 @@ class SamPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.engine = SamEngine()
+        self._selected_model_path = self.engine.checkpoint_path or ""
         self._viewer = None
         self._current_mask = None
         self._current_file = None
@@ -79,6 +80,7 @@ class SamPanel(QWidget):
         self.model_status.setWordWrap(True)
         self.model_status.setStyleSheet(f"color: {C_SUBTEXT}; font-size: 10px; font-weight: 500; padding: 2px 4px;")
         layout.addWidget(self.model_status)
+        self._sync_model_button()
 
         # Navigation row
         nav_row = QHBoxLayout()
@@ -166,14 +168,23 @@ class SamPanel(QWidget):
             "PyTorch模型 (*.pth);;所有文件 (*.*)")
         if path:
             self._selected_model_path = path
-            self.model_path_btn.button().setText(os.path.basename(path))
-            self.model_path_btn.button().setToolTip(path)
+            self._sync_model_button()
+
+    def _sync_model_button(self):
+        if self._selected_model_path and os.path.isfile(self._selected_model_path):
+            self.model_path_btn.button().setText(os.path.basename(self._selected_model_path))
+            self.model_path_btn.button().setToolTip(self._selected_model_path)
+        else:
+            self.model_path_btn.button().setText("选择SAM模型文件...")
+            self.model_path_btn.button().setToolTip("")
 
     def _on_confirm_load(self):
-        path = getattr(self, '_selected_model_path', '')
+        path = getattr(self, '_selected_model_path', '') or self.engine.checkpoint_path
         if not path or not os.path.isfile(path):
             QMessageBox.warning(self, "提示", "请先选择有效的SAM模型文件")
             return
+        self._selected_model_path = path
+        self._sync_model_button()
         self.confirm_load_btn.button().setEnabled(False)
         self.model_status.setText("正在加载...")
         self.model_status.setStyleSheet(f"color: {C_WARN}; font-weight: bold; font-size: 11px;")
