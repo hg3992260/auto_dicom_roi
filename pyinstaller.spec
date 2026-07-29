@@ -75,8 +75,22 @@ datas += collect_data_files('rapidocr_onnxruntime')
 datas += collect_data_files('onnxruntime')
 
 datas += collect_data_files('segment_anything')
+
+# torch: collect all binaries and data files aggressively
 binaries = collect_dynamic_libs('torch')
 binaries += collect_dynamic_libs('onnxruntime')
+
+# Explicitly add torch lib directory DLLs (PyInstaller sometimes misses these)
+import torch as _torch_check
+_torch_dir = Path(_torch_check.__file__).parent
+_torch_lib = _torch_dir / 'lib'
+if _torch_lib.exists():
+    for _dll in _torch_lib.glob('*.dll'):
+        binaries.append((str(_dll), '.'))
+    for _dll in _torch_lib.glob('*.so'):
+        binaries.append((str(_dll), '.'))
+# Also collect torch data files (configs, etc)
+datas += collect_data_files('torch')
 
 a = Analysis(
     ['main.py'],
