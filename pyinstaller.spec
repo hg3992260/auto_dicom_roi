@@ -70,6 +70,7 @@ def merge_package_files(package_name, datas_target, binaries_target):
 IS_MAC = platform.system() == "Darwin"
 
 require_module("torch")
+require_module("torchvision")
 require_module("segment_anything")
 require_module("onnxruntime")
 require_module("rapidocr_onnxruntime")
@@ -151,11 +152,17 @@ hidden_imports = [
     'segment_anything.utils.amg',
     'segment_anything.utils.transforms',
     'segment_anything.utils.onnx',
+    'torchvision',
+    'torchvision.io',
+    'torchvision.ops',
+    'torchvision.transforms',
+    'torchvision.transforms.functional',
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.serialization', 'torch.multiprocessing',
 ]
 # Collect package submodules aggressively for bundled runtime imports.
 extend_unique(hidden_imports, safe_collect_submodules('torch'))
+extend_unique(hidden_imports, safe_collect_submodules('torchvision'))
 extend_unique(hidden_imports, safe_collect_submodules('segment_anything'))
 extend_unique(hidden_imports, safe_collect_submodules('onnxruntime'))
 extend_unique(hidden_imports, safe_collect_submodules('rapidocr_onnxruntime'))
@@ -166,9 +173,11 @@ datas += collect_data_files('rapidocr_onnxruntime')
 datas += collect_data_files('onnxruntime')
 datas += collect_data_files('segment_anything')
 datas += collect_data_files('torch')
+datas += collect_data_files('torchvision')
 
 # torch: collect all binaries and data files aggressively
 binaries = collect_dynamic_libs('torch')
+binaries += collect_dynamic_libs('torchvision')
 binaries += collect_dynamic_libs('onnxruntime')
 
 for package_name in [
