@@ -32,13 +32,21 @@ def require_module(module_name):
         ) from exc
 
 
+def warn_module(module_name):
+    """Warn but don't fail if an optional module is missing."""
+    try:
+        return importlib.import_module(module_name)
+    except Exception as exc:
+        print(f"[pyinstaller.spec] WARNING: optional module {module_name} not found: {exc}")
+        return None
+
+
 def safe_collect_submodules(module_name):
     try:
         return collect_submodules(module_name)
     except Exception as exc:
-        raise SystemExit(
-            f"[pyinstaller.spec] Failed to collect submodules for {module_name}: {exc}"
-        ) from exc
+        print(f"[pyinstaller.spec] WARNING: cannot collect submodules for {module_name}: {exc}")
+        return []
 
 
 def extend_unique(target, items):
@@ -75,7 +83,7 @@ def merge_package_files(package_name, datas_target, binaries_target):
 IS_MAC = platform.system() == "Darwin"
 
 require_module("torch")
-require_module("torchvision")
+warn_module("torchvision")
 require_module("segment_anything")
 require_module("onnxruntime")
 require_module("rapidocr_onnxruntime")
@@ -178,11 +186,17 @@ datas += collect_data_files('rapidocr_onnxruntime')
 datas += collect_data_files('onnxruntime')
 datas += collect_data_files('segment_anything')
 datas += collect_data_files('torch')
-datas += collect_data_files('torchvision')
+try:
+    datas += collect_data_files('torchvision')
+except Exception:
+    pass
 
 # torch: collect all binaries and data files aggressively
 binaries = collect_dynamic_libs('torch')
-binaries += collect_dynamic_libs('torchvision')
+try:
+    binaries += collect_dynamic_libs('torchvision')
+except Exception:
+    pass
 binaries += collect_dynamic_libs('onnxruntime')
 
 for package_name in [
