@@ -63,21 +63,27 @@ class SamEngine:
         self._find_checkpoint()
 
     def _find_checkpoint(self):
-        base = os.path.dirname(os.path.abspath(__file__))
-        exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
         search_paths = [
-            os.path.join(base, "..", "models", "sam_vit_b_01ec64.pth"),
-            os.path.join(base, "..", "models", "sam_vit_h_4b8939.pth"),
+            os.path.join(base, "models", "sam_vit_b_01ec64.pth"),
+            os.path.join(base, "models", "sam_vit_h_4b8939.pth"),
+            os.path.join(base, "models", "sam_vit_l_0b3195.pth"),
             os.path.join(os.getcwd(), "models", "sam_vit_b_01ec64.pth"),
             os.path.join(os.getcwd(), "models", "sam_vit_h_4b8939.pth"),
-            os.path.join(exe_dir, "models", "sam_vit_b_01ec64.pth"),
-            os.path.join(exe_dir, "models", "sam_vit_h_4b8939.pth"),
+            os.path.join(os.getcwd(), "models", "sam_vit_l_0b3195.pth"),
         ]
         for p in search_paths:
             if os.path.exists(p):
                 self.checkpoint_path = p
                 if "vit_h" in p:
                     self.model_type = "vit_h"
+                elif "vit_l" in p:
+                    self.model_type = "vit_l"
+                else:
+                    self.model_type = "vit_b"
                 return
 
     def set_checkpoint(self, path: str):
@@ -120,7 +126,7 @@ class SamEngine:
             return True
         if not self.checkpoint_path:
             if status_callback:
-                status_callback("SAM checkpoint not found")
+                status_callback("SAM checkpoint not found — 请在界面上选择 .pth 模型文件")
             return False
         if status_callback:
             status_callback("Loading SAM model...")
@@ -138,8 +144,9 @@ class SamEngine:
                 status_callback(f"SAM {self.model_type} loaded on {self.device}")
             return True
         except Exception as e:
+            err_msg = f"SAM load failed: {e} | path={self.checkpoint_path} | device={self.device}"
             if status_callback:
-                status_callback(f"SAM load failed: {e}")
+                status_callback(err_msg)
             if self.device == "cuda":
                 try:
                     if status_callback:
