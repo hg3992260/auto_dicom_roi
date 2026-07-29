@@ -24,15 +24,21 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pylibjpeg pylibjpeg-libjpeg pylibjpeg-openjpeg
           python -m pip install onnxruntime-directml
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 torchvision==0.21.0
+          python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch==2.6.0+cu118 torchvision==0.21.0+cu118
           python -m pip install segment-anything
           python -m pip install pyinstaller
       - name: Verify Python environment
         run: |
           python -c "import sys; print(sys.executable)"
           python -c "import torch; print('torch ok', torch.__version__, torch.__file__)"
+          python -c "import torch; print('torch cuda build', torch.version.cuda, 'cuda available on runner', torch.cuda.is_available())"
           python -c "import torchvision; print('torchvision ok', torchvision.__version__, torchvision.__file__)"
           python -c "import segment_anything; print('segment_anything ok', segment_anything.__file__)"
+      - name: Explain CUDA packaging
+        run: |
+          echo Building Windows artifact with CUDA-enabled PyTorch wheels.
+          echo GitHub-hosted runners usually do not expose an NVIDIA GPU, so torch.cuda.is_available may be False during CI.
+          echo The packaged EXE can still use CUDA on the target machine if NVIDIA drivers are installed and compatible.
       - name: Download SAM models
         run: |
           mkdir models
@@ -47,6 +53,9 @@ jobs:
           mkdir release\models
           copy models\sam_vit_b_01ec64.pth release\models\
           echo Other SAM models can also be placed in this folder. > release\models\README.txt
+          > release\CUDA_README.txt echo This Windows build bundles CUDA-enabled PyTorch for SAM.
+          >> release\CUDA_README.txt echo A compatible NVIDIA driver is still required on the target machine.
+          >> release\CUDA_README.txt echo If no compatible GPU or driver is present, the app will fall back to CPU.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
