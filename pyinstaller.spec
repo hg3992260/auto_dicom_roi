@@ -103,6 +103,11 @@ added_files = [
     ('logo/Gemini_Generated_Image_egithcegithcegit.png', 'logo'),
 ]
 
+_logo_png = ROOT / 'logo' / 'Gemini_Generated_Image_egithcegithcegit.png'
+_logo_icns = ROOT / 'logo' / 'app_icon.icns'
+if _logo_icns.exists():
+    added_files.append((str(_logo_icns), 'logo'))
+
 # PyCt6 theme JSON and assets
 import PyCt6 as _pyct6
 _pyct6_dir = Path(_pyct6.__file__).parent
@@ -174,7 +179,25 @@ hidden_imports = [
     'torch.serialization', 'torch.multiprocessing',
 ]
 # Collect package submodules aggressively for bundled runtime imports.
-extend_unique(hidden_imports, safe_collect_submodules('torch'))
+# torch._numpy is pulled in by collect_submodules('torch') but fails to import
+# inside a frozen app (generated ufunc shims) and is not used by this app.
+# NOTE: torch._dynamo / torch._functorch etc. MUST stay bundled - segment_anything
+# imports torchvision.ops which depends on them at runtime.
+_TORCH_SUBMODULE_BLOCKLIST = (
+    'torch._numpy',
+)
+
+
+def filtered_torch_submodules():
+    subs = []
+    for s in safe_collect_submodules('torch'):
+        if any(s == b or s.startswith(b + '.') for b in _TORCH_SUBMODULE_BLOCKLIST):
+            continue
+        subs.append(s)
+    return subs
+
+
+extend_unique(hidden_imports, filtered_torch_submodules())
 extend_unique(hidden_imports, safe_collect_submodules('torchvision'))
 extend_unique(hidden_imports, safe_collect_submodules('segment_anything'))
 extend_unique(hidden_imports, safe_collect_submodules('onnxruntime'))
@@ -238,7 +261,13 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'pandas', 'jupyter'],
+    excludes=['tkinter', 'matplotlib', 'pandas', 'jupyter',
+              'PyQt5', 'PyQt5.QtCore', 'PyQt5.QtGui', 'PyQt5.QtWidgets',
+              'PyQt5.QtWebEngineWidgets', 'PyQt5.QtNetwork', 'PyQt5.QtPrintSupport',
+              'PyQt5_sip', 'PyQt6_sip',
+              'PySide2', 'PyQt6', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets',
+              'torch._numpy', 'torchaudio', 'nbformat', 'jupyter_client',
+              'jupyter_core', 'ipykernel', 'notebook'],
     noarchive=False,
 )
 
@@ -247,9 +276,8 @@ pyz = PYZ(a.pure, a.zipped_data)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='DICOM_Analysis_Tool',
     debug=False,
     bootloader_ignore_signals=False,
@@ -264,15 +292,16 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='logo/Gemini_Generated_Image_egithcegithcegit.png' if Path('logo/Gemini_Generated_Image_egithcegithcegit.png').exists() else None,
 )
 
-# On macOS, wrap EXE in a .app bundle
+# On macOS, wrap EXE in a .app bundle (onedir mode)
 if IS_MAC:
     app = BUNDLE(
         exe,
+        a.binaries,
+        a.datas,
         name='DICOM_Analysis_Tool.app',
-        icon='logo/Gemini_Generated_Image_egithcegithcegit.png' if Path('logo/Gemini_Generated_Image_egithcegithcegit.png').exists() else None,
+        icon=str(_logo_icns) if _logo_icns.exists() else (str(_logo_png) if _logo_png.exists() else None),
         bundle_identifier='com.dicom.analysis.tool',
         info_plist={
             'NSHighResolutionCapable': 'True',
