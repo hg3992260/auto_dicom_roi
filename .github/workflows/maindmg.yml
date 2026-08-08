@@ -1,0 +1,78 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install system deps
+        run: brew install create-dmg libomp
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.6.0 torchvision==0.21.0
+          python -m pip install -r requirements.txt
+          python -m pip install pylibjpeg pylibjpeg-libjpeg pylibjpeg-openjpeg
+          python -m pip install opencv-python-headless
+          python -m pip install segment-anything
+          python -m pip install pyinstaller
+
+      - name: Verify Python environment
+        run: |
+          python -c "import sys; print(sys.executable)"
+          python -c "import torch; print('torch ok', torch.__version__, torch.__file__)"
+          python -c "import torchvision; print('torchvision ok', torchvision.__version__, torchvision.__file__)"
+          python -c "import segment_anything; print('segment_anything ok', segment_anything.__file__)"
+
+      - name: Build .app bundle
+        run: |
+          python -m PyInstaller pyinstaller.spec --clean --noconfirm
+          ls -la dist/
+
+      - name: Create DMG
+        run: |
+          mkdir -p dmg_root
+          cp -R dist/DICOM_Analysis_Tool.app dmg_root/
+          mkdir -p dmg_root/models
+          echo "Place SAM models here (sam_vit_b_01ec64.pth, sam_vit_l_0b3195.pth, sam_vit_h_4b8939.pth). The app also lets you pick a .pth file directly." > dmg_root/models/README.txt
+          create-dmg \
+            --volname "DICOM Analysis Tool" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "DICOM_Analysis_Tool.app" 150 190 \
+            --hide-extension "DICOM_Analysis_Tool.app" \
+            --app-drop-link 450 190 \
+            "DICOM_Analysis_Tool_macOS.dmg" \
+            dmg_root/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DICOM_Analysis_Tool_macOS
+          path: DICOM_Analysis_Tool_macOS.dmg
+          retention-days: 7
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: DICOM_Analysis_Tool_macOS.dmg
+          generate_release_notes: true
