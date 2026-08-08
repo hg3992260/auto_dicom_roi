@@ -41,16 +41,9 @@ jobs:
           python -c "import torchvision; print('torchvision ok', torchvision.__version__, torchvision.__file__)"
           python -c "import segment_anything; print('segment_anything ok', segment_anything.__file__)"
 
-      - name: Download SAM models
-        run: |
-          mkdir -p models
-          curl -L -o models/sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
-
       - name: Build .app bundle
         run: |
           python -m PyInstaller pyinstaller.spec --clean --noconfirm
-          mkdir -p dist/DICOM_Analysis_Tool.app/Contents/MacOS/models
-          cp models/sam_vit_b_01ec64.pth dist/DICOM_Analysis_Tool.app/Contents/MacOS/models/
           ls -la dist/
 
       - name: Create DMG
@@ -58,8 +51,7 @@ jobs:
           mkdir -p dmg_root
           cp -R dist/DICOM_Analysis_Tool.app dmg_root/
           mkdir -p dmg_root/models
-          cp models/sam_vit_b_01ec64.pth dmg_root/models/
-          echo "Other SAM models can also be placed in this folder." > dmg_root/models/README.txt
+          echo "Place SAM models here (sam_vit_b_01ec64.pth, sam_vit_l_0b3195.pth, sam_vit_h_4b8939.pth). The app also lets you pick a .pth file directly." > dmg_root/models/README.txt
           create-dmg \
             --volname "DICOM Analysis Tool" \
             --window-pos 200 120 \
