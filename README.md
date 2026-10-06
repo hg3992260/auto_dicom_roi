@@ -10,12 +10,54 @@
 
 ---
 
+## 界面预览
+
+> 下列截图均使用仓库内生成的**合成演示数据**（`DEMO^ANON` / `DEMO001`，见
+> [演示数据](#演示数据)），不含任何真实患者信息。
+
+### 主界面
+
+三栏布局：左侧为 DICOM 路径与操作面板，中间为 `Patient → Study → Series → File` 病人列表，
+右侧为统一查看器。
+
+![主界面](docs/screenshots/01_main_window.png)
+
+### ROI 检测（Overlay Plane）
+
+以 `overlay` 方法提取 DICOM 6000 组 Overlay Plane，查看器实时叠加绿色掩膜；
+后台对所有选中文件批处理并落 JSON。
+
+![ROI 检测](docs/screenshots/02_roi_detection.png)
+
+### 病人列表
+
+按 `PatientID → StudyInstanceUID → SeriesInstanceUID` 三级自动分组，支持展开到每一帧。
+
+![病人列表](docs/screenshots/03_patient_tree.png)
+
+### 查看器与掩膜叠加
+
+灰度图 + 绿色掩膜；窗宽窗位可实时调整，`↺` 恢复 DICOM 默认值。
+本图显示合成数据中的 Overlay 走行曲线与检测到的 ROI。
+
+![查看器](docs/screenshots/04_viewer_with_mask.png)
+
+### ROI 检测面板
+
+方法选择、最小区域、输出目录与两个执行入口（批处理 / 当前文件），底部为执行状态。
+
+![ROI 面板](docs/screenshots/05_roi_panel.png)
+
+---
+
 ## 目录
 
+- [界面预览](#界面预览)
 - [功能特性](#功能特性)
 - [安装](#安装)
 - [快速开始](#快速开始)
 - [模型权重](#模型权重)
+- [演示数据](#演示数据)
 - [目录结构](#目录结构)
 - [输出格式](#输出格式)
 - [MCP 接口](#mcp-接口)
@@ -158,6 +200,21 @@ mkdir models
 ```
 
 ---
+
+---
+
+## 演示数据
+
+仓库自带的 `examples/make_demo_dicom.py` 可生成**完全合成的演示 DICOM 数据集**
+（假患者 `DEMO^ANON`/`DEMO001`、合成 MR 图像、附 6000 组 Overlay Plane），
+用于试用功能、复现 README 截图或做 CI 冒烟测试：
+
+```bash
+python examples/make_demo_dicom.py examples/demo_dicom 6
+# 然后在 GUI 中把该目录作为数据目录扫描
+```
+
+生成的数据**不含任何真实患者信息**，可安全分发。
 
 ## 目录结构
 
