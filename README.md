@@ -1,5 +1,6 @@
 # DICOM Analysis Tool
 
+[![Release](https://img.shields.io/github/v/release/hg3992260/auto_dicom_roi)](https://github.com/hg3992260/auto_dicom_roi/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/GUI-PySide6%20%2B%20PyCt6-2E6DA4)](https://doc.qt.io/qtforpython/)
 [![SAM](https://img.shields.io/badge/Segmentation-SAM%20%7C%20MedSAM%20%7C%20SAM--Med2D%2F3D-7C3AED)](https://github.com/facebookresearch/segment-anything)
@@ -63,6 +64,7 @@
 - [MCP 接口](#mcp-接口)
 - [环境变量](#环境变量)
 - [数据与隐私](#数据与隐私)
+- [更新日志](CHANGELOG.md)
 - [已知限制](#已知限制)
 
 ---
