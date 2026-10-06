@@ -46,6 +46,8 @@ class RoiWorker(QThread):
         all_rois = []
         total = len(self.file_paths)
         for idx, fp in enumerate(self.file_paths):
+            if self.isInterruptionRequested():
+                break
             self.progress.emit(idx + 1, total)
             self.log.emit(f"Processing: {os.path.basename(fp)}")
             try:
@@ -135,7 +137,6 @@ class RoiPanel(QWidget):
         row1.addWidget(lbl1)
         row1.addStretch()
         gb_layout.addLayout(row1)
-        gb_layout.addLayout(row1)
 
         row2 = QHBoxLayout()
         lbl2 = QLabel("最小区域:")
@@ -164,7 +165,7 @@ class RoiPanel(QWidget):
         layout.addWidget(gb)
 
         self.run_btn = CButton(
-            master=self, text="开始ROI检测",
+            master=self, text="开始ROI检测(批处理)",
             width=240, height=36,
             background_color=(C_ACCENT, C_ACCENT),
             hover_color=(C_ACCENT_HOVER, C_ACCENT_HOVER),
@@ -174,6 +175,19 @@ class RoiPanel(QWidget):
         )
         self.run_btn.button().clicked.connect(self._on_run)
         layout.addWidget(self.run_btn.button())
+
+        # 单文件 ROI 检测：仅处理当前选中的图片文件
+        self.single_btn = CButton(
+            master=self, text="检测当前文件",
+            width=240, height=36,
+            background_color=("#0D9488", "#0D9488"),
+            hover_color=("#0F766E", "#0F766E"),
+            text_color=("white", "white"),
+            font_size=12,
+            font_style="bold",
+        )
+        self.single_btn.button().clicked.connect(self._on_run_single)
+        layout.addWidget(self.single_btn.button())
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -207,8 +221,31 @@ class RoiPanel(QWidget):
         self.status_label.setText(f"已选 {len(files)} 个文件" if files else "就绪")
 
     def _on_run(self):
+        # 批处理：在查看器上显示 overlay（若当前有文件）+ 遍历全部文件做 ROI 检测
         self._run_overlay_display()
         self._run_batch_save()
+
+    def _on_run_single(self):
+        """单文件 ROI 检测：只处理当前查看器选中的图片文件。
+        先提示并叠加显示该文件的 Overlay 层（若有），再执行 ROI 检测。"""
+        if self._viewer is None or self._viewer.current_path is None:
+            QMessageBox.warning(self, "提示", "请先在病人列表中点击一个DICOM文件")
+            return
+        file_path = self._viewer.current_path
+        if self.worker is not None and self.worker.isRunning():
+            QMessageBox.information(self, "提示", "已有ROI检测正在运行，请等待完成")
+            return
+        # 提示当前文件是否存在 Overlay 层，并在查看器上叠加显示
+        has_overlay = self._run_overlay_display(file_path)
+        params = {"min_area": 10}
+        self._start_worker([file_path], params)
+        status = f"正在检测单个文件: {os.path.basename(file_path)}"
+        if has_overlay:
+            status += "（已叠加显示 Overlay）"
+        else:
+            status += "（当前文件不含 Overlay 层）"
+        self.status_label.setText(status)
+        self.status_label.setStyleSheet(f"color: {C_TEXT}; font-size: 11px; font-weight: 500;")
 
     def _run_batch_save(self):
         file_paths = []
@@ -225,29 +262,47 @@ class RoiPanel(QWidget):
         if not file_paths:
             QMessageBox.warning(self, "提示", "请先扫描DICOM文件夹")
             return
+        if self.worker is not None and self.worker.isRunning():
+            QMessageBox.information(self, "提示", "已有ROI检测正在运行，请等待完成")
+            return
         params = {"min_area": 10}
+        self._start_worker(file_paths, params)
+
+    def _start_worker(self, file_paths, params):
+        """启动 RoiWorker 后台线程执行 ROI 检测(含 overlay 有效文件的 OCR)。"""
         self.worker = RoiWorker(file_paths, "overlay", params, self._output_dir)
         self.worker.progress.connect(self._on_progress)
         self.worker.log.connect(self._on_log)
         self.worker.done.connect(self._on_done)
+        self.run_btn.button().setEnabled(False)
+        self.single_btn.button().setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("准备中...")
         self.worker.start()
 
-    def _run_overlay_display(self):
-        if self._viewer is None or self._viewer.current_path is None:
-            QMessageBox.warning(self, "提示", "请先在病人列表中点击一个DICOM文件")
-            return
+    def _run_overlay_display(self, file_path=None):
+        """提取并叠加显示 Overlay 层。返回 True=含 Overlay 且已叠加；False=不含。
+        批处理调用时不传 file_path（取查看器当前文件），单文件检测传入目标文件。"""
+        if file_path is None:
+            if self._viewer is None or self._viewer.current_path is None:
+                QMessageBox.warning(self, "提示", "请先在病人列表中点击一个DICOM文件")
+                return False
+            file_path = self._viewer.current_path
 
-        file_path = self._viewer.current_path
         all_overlays = self.engine.extract_overlay_mask(file_path)
 
-        if all_overlays is None:
-            QMessageBox.information(self, "提示", "当前DICOM文件不包含ROI叠加层")
-            return
+        if all_overlays is None or int(all_overlays.sum()) == 0:
+            self.status_label.setText(f"当前文件不含 Overlay 层: {os.path.basename(file_path)}")
+            self.status_label.setStyleSheet(f"color: {C_SUBTEXT}; font-size: 11px; font-weight: 500;")
+            return False
 
         pixel_count = int(all_overlays.sum())
-        self._viewer.set_mask(all_overlays)
+        if self._viewer is not None:
+            self._viewer.set_mask(all_overlays)
         self.status_label.setText(f"Overlay已显示 | {pixel_count} px")
         self.status_label.setStyleSheet(f"color: {C_GREEN}; font-weight: bold; font-size: 11px;")
+        return True
 
     def _on_progress(self, val, total):
         self.progress_bar.setValue(val)
@@ -259,7 +314,36 @@ class RoiPanel(QWidget):
     def _on_done(self, summary, json_path, png_path, _image):
         self.progress_bar.setVisible(False)
         self.run_btn.button().setEnabled(True)
+        self.single_btn.button().setEnabled(True)
         self.status_label.setText(summary)
         self.status_label.setStyleSheet(f"color: {C_GREEN}; font-weight: bold; font-size: 11px;")
+        try:
+            from mcp_dicom_tool.gui_bridge import emit_event
+            win = self._parent_window()
+            emit_event(win, "roi_detect_done", {
+                "summary": summary,
+                "json_path": json_path,
+            })
+        except Exception:
+            pass
         QMessageBox.information(self, "ROI检测完成",
                                  f"{summary}\n\n结果已保存至:\n{json_path}")
+
+    def _parent_window(self):
+        w = self.parent()
+        while w is not None:
+            if getattr(w, "viewer", None) is not None:
+                return w
+            w = w.parent()
+        return None
+
+    def shutdown_threads(self):
+        """窗口关闭时安全停止后台 RoiWorker 线程。"""
+        worker = getattr(self, "worker", None)
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            worker.wait(3000)
+            if worker.isRunning():
+                worker.terminate()
+                worker.wait(1000)
+            self.worker = None

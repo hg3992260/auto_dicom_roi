@@ -5,19 +5,22 @@ from rapidocr_onnxruntime import RapidOCR
 
 
 class OcrEngine:
-    def __init__(self):
+    def __init__(self, max_threads: int = 4):
         try:
             import onnxruntime as ort
             providers = ort.get_available_providers()
             has_dml = 'DmlExecutionProvider' in providers
         except Exception:
             has_dml = False
+        # 限制 onnxruntime 线程数，避免 OCR 推理吃满所有 CPU 核导致 GUI 卡死
         self._engine = RapidOCR(
             box_thresh=0.3,
             unclip_ratio=1.8,
             det_use_dml=has_dml,
             cls_use_dml=has_dml,
             rec_use_dml=has_dml,
+            intra_op_num_threads=max_threads,
+            inter_op_num_threads=max_threads,
         )
 
     def extract(self, image: np.ndarray) -> List[Dict]:

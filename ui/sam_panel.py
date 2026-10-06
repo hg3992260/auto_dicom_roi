@@ -213,6 +213,17 @@ class SamPanel(QWidget):
                 f"color: {accent}; font-weight: bold; font-size: 12px; "
                 f"background-color: {bg}; padding: 4px 8px; border-radius: 4px; "
                 f"border: 2px solid {accent};")
+            try:
+                from mcp_dicom_tool.gui_bridge import emit_event
+                win = self._parent_window()
+                emit_event(win, "model_loaded", {
+                    "checkpoint": self.engine.checkpoint_path,
+                    "family": self.engine.model_family,
+                    "model_type": self.engine.model_type,
+                    "device": self.engine.device,
+                })
+            except Exception:
+                pass
             if self._viewer is not None and self._viewer.image_rgb is not None:
                 self.engine.set_image(self._viewer.image_rgb)
                 v = self._viewer
@@ -359,8 +370,23 @@ class SamPanel(QWidget):
             v.set_mask(masks[best_idx])
             self.int_save_btn.button().setEnabled(True)
             self.status_label.setText(f"Mask已更新 (Score: {scores[best_idx]:.3f})")
+            try:
+                from mcp_dicom_tool.gui_bridge import emit_sam_mask
+                win = self._parent_window()
+                emit_sam_mask(win, self._current_mask, self._current_file or "",
+                              score=float(scores[best_idx]), source="sam_interactive")
+            except Exception:
+                pass
         except Exception as e:
             self.status_label.setText(f"预测失败: {e}")
+
+    def _parent_window(self):
+        w = self.parent()
+        while w is not None:
+            if getattr(w, "viewer", None) is not None:
+                return w
+            w = w.parent()
+        return None
 
     def _on_clear_points(self):
         self._current_mask = None
@@ -408,6 +434,19 @@ class SamPanel(QWidget):
             extra = f" {data['length_px']}px ({data['length_mm']}mm)"
         self.status_label.setText(f"手动ROI完成 [{shape}]: {len(data['points'])} pts{extra} — 可保存")
         self.int_save_btn.button().setEnabled(True)
+        try:
+            from mcp_dicom_tool.gui_bridge import emit_event
+            win = self._parent_window()
+            emit_event(win, "manual_roi", {
+                "shape": data.get("shape", shape),
+                "points": data.get("points"),
+                "angle_deg": data.get("angle_deg"),
+                "length_px": data.get("length_px"),
+                "length_mm": data.get("length_mm"),
+                "file": self._current_file,
+            })
+        except Exception:
+            pass
 
     def _on_manual_done(self):
         if self._viewer is None:
@@ -565,3 +604,17 @@ class SamPanel(QWidget):
             )
         self._manual_roi_data = None
         self._current_mask = None
+        try:
+            from mcp_dicom_tool.gui_bridge import emit_event
+            win = self._parent_window()
+            emit_event(win, "sam_mask_saved", {
+                "file": self._current_file,
+                "basename": os.path.basename(self._current_file) if self._current_file else "",
+                "method": method_label,
+                "description": roi_desc,
+                "json_path": json_path,
+                "png_path": png_path,
+                "stats": stats,
+            })
+        except Exception:
+            pass

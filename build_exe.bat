@@ -2,10 +2,13 @@
 REM Build standalone .exe for DICOM Analysis Tool
 REM Requires: pip install pyinstaller
 
-set "PYTHON_EXE=D:\python\envs\RSNA311\python.exe"
+REM 优先使用 PATH 中的 python；也可先激活虚拟环境或手动指定
+if not defined PYTHON_EXE set "PYTHON_EXE=python"
 
-if not exist "%PYTHON_EXE%" (
-    echo ERROR: Python environment not found: %PYTHON_EXE%
+where %PYTHON_EXE% >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: "%PYTHON_EXE%" not found in PATH.
+    echo         Activate your virtualenv, or set PYTHON_EXE to a full path.
     pause
     exit /b 1
 )

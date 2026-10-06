@@ -1,0 +1,95 @@
+# ============================================================
+#  DICOM Analysis Tool — 忽略规则
+#  原则：只提交「程序代码与必要资源」；
+#        模型权重、运行产物、本地数据、内部研究脚本一律不入库。
+# ============================================================
+
+# ---- 模型权重（体积过大，请按 README 单独下载）----
+models/
+*.pth
+*.pt
+*.bin
+*.ckpt
+*.pkl
+*.safetensors
+*.onnx
+*.tflite
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# ---- 运行期产物 ----
+output/
+logs/
+*.log
+mcp_records/
+*.tmp
+
+# ---- 本地数据库 / 表格导出（可能含受保护信息）----
+*.db
+*.sqlite
+*.sqlite3
+*.xlsx
+*.xls
+*.csv
+
+# ---- 构建产物 ----
+build/
+dist/
+*.spec.bak
+
+# ---- 内部研究脚本与交接文档（不随程序发布）----
+HANDOVER.md
+session-dashboard.html
+stat-pipeline-report_*.html
+revise_*.py
+r[0-9]*_*.py
+manuscript_*.py
+make_response_letter*.py
+make_manuscript_*.py
+sync_checkers_*.py
+update_handover*.py
+fix_data_conflicts.py
+pack_repo.py
+write_repo_docs.py
+consistency_sam_manual.py
+overlay_sam_*.py
+signal_analysis_redo.py
+regenerate_*.py
+regen_manuscript_figs.py
+audit_*.py
+diag_*.py
+explore_extractable.py
+extract_sam_stats.py
+extract_doc_text.py
+binary_detection.py
+correlation_analysis.py
+generate_manuscript.py
+generate_sobel*.py
+generate_facial_nerve_data.py
+rebuild_*.py
+merge_sam_manual.py
+v6_cache_signals.py
+final_case_figure.py
+insert_case_figure.py
+update_case_plate.py
+dump_structure.py
+find_*.py
+
+# ---- 本地数据目录（自行放置，不入库）----
+data/
+*.dcm
+DICOMDIR
+
+# ---- 操作系统 / 编辑器 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

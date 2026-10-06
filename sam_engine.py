@@ -27,11 +27,21 @@ except ImportError as e:
         pass
 
 try:
-    from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
+    import segment_anything  # noqa: F401
     HAS_SAM = True
 except ImportError as e:
     HAS_SAM = False
     _sam_import_error = str(e)
+
+# 多模型适配层（SAM / MedSAM / LiteMedSAM / SAM2 / SAM-Med2D / SAM-Med3D）
+try:
+    from model_adapters import (
+        detect_family, describe_family, create_predictor, UnifiedPredictor,
+    )
+    HAS_ADAPTERS = True
+except ImportError as e:
+    HAS_ADAPTERS = False
+    _adapter_import_error = str(e)
 
 try:
     import pydicom
@@ -61,9 +71,11 @@ class SamEngine:
             self.device = "cuda"
         self.model_type = "vit_b"
         self.checkpoint_path = ""
+        self.model_family = "sam"
         self.sam = None
         self.predictor = None
         self.mask_generator = None
+        self._unified = None
         self._find_checkpoint()
 
     def _find_checkpoint(self):
@@ -71,25 +83,27 @@ class SamEngine:
             p = str(candidate)
             if os.path.exists(p):
                 self.checkpoint_path = p
-                if "vit_h" in p:
-                    self.model_type = "vit_h"
-                elif "vit_l" in p:
-                    self.model_type = "vit_l"
-                else:
-                    self.model_type = "vit_b"
+                self.model_family = detect_family(p)
+                self._set_model_type_from_name(p)
                 return
 
-    def set_checkpoint(self, path: str):
-        self.checkpoint_path = path
-        if "vit_h" in path:
+    def _set_model_type_from_name(self, path: str):
+        fname = os.path.basename(str(path)).lower()
+        if 'vit_h' in fname:
             self.model_type = "vit_h"
-        elif "vit_l" in path:
+        elif 'vit_l' in fname:
             self.model_type = "vit_l"
         else:
             self.model_type = "vit_b"
+
+    def set_checkpoint(self, path: str):
+        self.checkpoint_path = path
+        self.model_family = detect_family(path)
+        self._set_model_type_from_name(path)
         self.sam = None
         self.predictor = None
         self.mask_generator = None
+        self._unified = None
 
     def is_ready(self) -> bool:
         return self.available and bool(self.checkpoint_path)
@@ -107,8 +121,9 @@ class SamEngine:
             paths = " | ".join(describe_model_search_paths()[:3])
             return f"SAM权重未找到，请放入 models 目录: {paths}" if paths else "SAM权重未找到"
         if self.sam is not None:
-            return f"SAM {self.model_type} loaded on {self.device}"
-        return f"已发现SAM权重: {os.path.basename(self.checkpoint_path)}"
+            family_desc = describe_family(self.model_family)
+            return f"{family_desc} ({self.model_family}) loaded on {self.device}"
+        return f"已发现权重: {os.path.basename(self.checkpoint_path)} [{self.model_family}]"
 
     def load_model(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         if not self.available:
@@ -117,29 +132,27 @@ class SamEngine:
             return False
         if self.sam is not None:
             if status_callback:
-                status_callback("SAM already loaded")
+                status_callback("Model already loaded")
             return True
         if not self.checkpoint_path:
             if status_callback:
                 status_callback("SAM checkpoint not found — 请在界面上选择 .pth 模型文件")
             return False
         if status_callback:
-            status_callback("Loading SAM model...")
+            status_callback("Loading model...")
         try:
-            self.sam = sam_model_registry[self.model_type](checkpoint=self.checkpoint_path)
-            self.sam.to(device=self.device)
-            self.predictor = SamPredictor(self.sam)
-            self.mask_generator = SamAutomaticMaskGenerator(
-                model=self.sam, points_per_side=32,
-                pred_iou_thresh=0.86, stability_score_thresh=0.92,
-                crop_n_layers=1, crop_n_points_downscale_factor=2,
-                min_mask_region_area=100,
-            )
+            # 使用 model_adapters 统一加载
+            self._unified = create_predictor(
+                self.checkpoint_path, device=self.device, family=self.model_family)
+            self.sam = self._unified.model
+            self.predictor = self._unified  # UnifiedPredictor 兼容 predict_mask 接口
+            self.mask_generator = self._unified
             if status_callback:
-                status_callback(f"SAM {self.model_type} loaded on {self.device}")
+                family_desc = describe_family(self.model_family)
+                status_callback(f"{family_desc} loaded on {self.device}")
             return True
         except Exception as e:
-            err_msg = f"SAM load failed: {e} | path={self.checkpoint_path} | device={self.device}"
+            err_msg = f"Model load failed: {e} | path={self.checkpoint_path} | device={self.device}"
             if status_callback:
                 status_callback(err_msg)
             if self.device == "cuda":
@@ -147,12 +160,13 @@ class SamEngine:
                     if status_callback:
                         status_callback("Retrying on CPU...")
                     self.device = "cpu"
-                    self.sam = sam_model_registry[self.model_type](checkpoint=self.checkpoint_path)
-                    self.sam.to(device="cpu")
-                    self.predictor = SamPredictor(self.sam)
-                    self.mask_generator = SamAutomaticMaskGenerator(model=self.sam)
+                    self._unified = create_predictor(
+                        self.checkpoint_path, device="cpu", family=self.model_family)
+                    self.sam = self._unified.model
+                    self.predictor = self._unified
+                    self.mask_generator = self._unified
                     if status_callback:
-                        status_callback("SAM loaded on CPU")
+                        status_callback("Model loaded on CPU")
                     return True
                 except Exception:
                     pass
@@ -192,7 +206,7 @@ class SamEngine:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
         else:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask_outputs = self.mask_generator.generate(image_rgb)
+        mask_outputs = self.mask_generator.auto_segment(image_rgb)
         results = []
         for i, m in enumerate(mask_outputs):
             binary_mask = m["segmentation"]

@@ -8,9 +8,23 @@ from pathlib import Path
 
 APP_NAME = "DICOM_Analysis_Tool"
 SAM_CHECKPOINT_NAMES = (
+    # 官方 SAM
     "sam_vit_b_01ec64.pth",
     "sam_vit_l_0b3195.pth",
     "sam_vit_h_4b8939.pth",
+    # MedSAM 家族
+    "medsam_vit_b.pth",
+    "lite_medsam.pth",
+    "tinyvit_pretrained.pt",
+    # SAM2
+    "sam2.1_hiera_tiny.pt",
+    "sam2.1_hiera_small.pt",
+    "sam2.1_hiera_large.pt",
+    "sam2_hiera_tiny.pt",
+    # SAM-Med
+    "sam_med2d_b.pth",
+    "sam_med3d_turbo.pth",
+    "sam_med3d.pth",
 )
 
 

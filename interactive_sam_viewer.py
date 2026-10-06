@@ -17,9 +17,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from roi_engine import RoiEngine
 from sam_engine import SamEngine
 
-BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "..", "面神经已处理图像", "面神经已处理图像", "miao")
-BASE_DIR = os.path.abspath(BASE_DIR) if os.path.exists(BASE_DIR) else ""
+BASE_DIR = os.environ.get("DICOM_ROI_DATA_DIR", "")
+if not BASE_DIR:
+    _d = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data"))
+    BASE_DIR = _d if os.path.isdir(_d) else ""
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
 SAM_RESULTS_DIR = os.path.join(OUTPUT_DIR, "sam_masks")

@@ -761,6 +761,15 @@ class MainWindow(CMainWindow):
         pixel_min, pixel_max, wc, ww = result
         bname = os.path.basename(file_path)
         self.file_info.setText(f"📄 {bname}  [{pixel_min:.0f}, {pixel_max:.0f}]")
+        try:
+            from mcp_dicom_tool.gui_bridge import emit_event
+            emit_event(self, "file_loaded", {
+                "file": file_path, "basename": bname,
+                "pixel_min": pixel_min, "pixel_max": pixel_max,
+                "window_center": wc, "window_width": ww,
+            })
+        except Exception:
+            pass
         self._suppress_slider = True
         range_val = max(pixel_max - pixel_min, 1)
         self.ww_slider.setMinimum(max(1, int(range_val * 0.01)))
@@ -830,6 +839,16 @@ class MainWindow(CMainWindow):
         self.status_label.setText(
             f"扫描完成: {summary['patient_count']} 患者, "
             f"{summary['series_count']} 序列, {summary['file_count']} 文件")
+        try:
+            from mcp_dicom_tool.gui_bridge import emit_event
+            emit_event(self, "scan_done", {
+                "patient_count": summary["patient_count"],
+                "series_count": summary["series_count"],
+                "file_count": summary["file_count"],
+                "modalities": summary.get("modalities") or [],
+            })
+        except Exception:
+            pass
         self._show_first_image()
 
     def _on_scan_error(self, err):
@@ -877,3 +896,23 @@ class MainWindow(CMainWindow):
                 self.path_input.line_edit().setText(path)
                 self._scan_folder()
                 return
+
+    def closeEvent(self, event):
+        """窗口关闭时安全停止后台 QThread，避免 QThread destroyed while running。"""
+        worker = getattr(self, "_scan_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            worker.wait(3000)
+            if worker.isRunning():
+                worker.terminate()
+                worker.wait(1000)
+        # 通知各面板停止各自的后台线程
+        for name in ("roi_panel", "sam_panel"):
+            panel = getattr(self, name, None)
+            if panel is not None and hasattr(panel, "shutdown_threads"):
+                try:
+                    panel.shutdown_threads()
+                except Exception:
+                    pass
+        event.accept()
+
