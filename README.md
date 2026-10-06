@@ -74,29 +74,25 @@
 - 按 `PatientID` → `StudyInstanceUID` → `SeriesInstanceUID` 三级自动分组
 - 支持进度回调与拖放文件夹直接扫描
 
-### 2. ROI 检测引擎（5 种算法）
+### 2. ROI 检测引擎
 
-| 方法 | 算法 | 说明 |
+`RoiEngine.METHODS` 当前暴露 **`overlay`** 与 **`ocr`** 两项：
+
+| 方法 | 算法 | 状态 |
 |------|------|------|
-| `overlay` | DICOM Overlay Plane（6000 组） | 三级 fallback：pydicom 内置 → 手动位解析 → RT Structure Set |
-| `otsu` | OTSU 阈值 + 形态学开运算 | 椭圆结构元 |
-| `adaptive` | 自适应高斯阈值 + 形态学 | 可调 `block_size`、`c_value` |
-| `watershed` | 分水岭算法 | 距离变换 + 标记 |
-| `edge` | Canny 边缘检测 + 形态学 | — |
+| `overlay` | DICOM Overlay Plane（6000 组） | **GUI 默认且当前唯一图形化方法**；三级 fallback：pydicom 内置 → 手动位解析 → RT Structure Set |
+| `ocr` | 烧录测量文字识别 | 与 overlay 联动，写入汇总库 |
+
+引擎内另已实现 4 种传统 CV 算法，但被 `METHODS` 白名单限制，扩展白名单后方可调用：
+
+| 私有实现 | 算法 |
+|----------|------|
+| `_detect_otsu` | OTSU 阈值 + 形态学开运算 |
+| `_detect_adaptive` | 自适应高斯阈值 + 形态学（可调 `block_size`、`c_value`） |
+| `_detect_watershed` | 分水岭算法（距离变换 + 标记） |
+| `_detect_edge` | Canny 边缘检测 + 形态学 |
 
 轮廓过滤支持**面积**、**长宽比**（默认 ≤5.0）、**圆形度**（默认 ≥0.1）。
-
-```python
-from roi_engine import RoiEngine
-engine = RoiEngine()
-rois = engine.detect(file_path, method="overlay", params={"min_area": 50})
-
-# 直接取 Overlay 原始位图掩膜
-mask = engine.extract_overlay_mask(file_path)   # -> np.ndarray (bool)
-```
-
-> **注意**：DICOM Overlay Plane 的位序有 MSB / LSB 两种解包约定。
-> 本引擎使用 pydicom 的标准（LSB）解包——若自行实现，用错位序会导致掩膜与图像错位。
 
 ### 3. SAM 交互式分割
 - 支持 **ViT-B / ViT-L / ViT-H** 三种量级（标准 SAM），并可选
