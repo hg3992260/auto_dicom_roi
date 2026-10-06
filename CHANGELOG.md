@@ -39,11 +39,23 @@
 ### 已知问题
 
 - **Windows EXE 的 CI 构建失败**：`build.yml` 的 pip 安装列表缺少 `torchvision`，
-  而 `segment_anything` 依赖 `torchvision.transforms`。
+  而 `segment_anything` 依赖 `torchvision.transforms`：
+  `ModuleNotFoundError: No module named 'torchvision'`。
   修复只需在该 workflow 增加一行 `pip install torchvision`；
   该文件属于 GitHub Actions，修改需要 `workflow` 权限范围。
-  在当前源码树中，`requirements.txt` **已包含** `torchvision>=0.15`，
-  本地按 README 安装即可正常构建。
+  在本源码树中 `requirements.txt` **已包含** `torchvision>=0.15`，
+  本地按 README 安装即可正常构建与打包。
+  因此 **V1.1.0 未提供 Windows 预编译包**。
+
+- **macOS DMG 的 CI 构建本身成功，但自动发布步骤被拒**：
+  `build_dmg.yml` 的 `softprops/action-gh-release` 返回 HTTP 403，
+  因为该 workflow 未声明 `permissions: contents: write`，
+  而仓库默认的 `GITHUB_TOKEN` 为只读。
+  修复方式：在 workflow 顶层加
+  `permissions: { contents: write }`（同样需要 `workflow` 权限范围）。
+  **V1.1.0 的 DMG 已从 CI artifact 手动取回并上传到 Release**，
+  路径 `DICOM_Analysis_Tool_V1.1.0_macOS.dmg`（419.5 MB，
+  sha256 `ea3ebc9a2bd9e7de97699eafecedd668502c7919a8cfa1036693bc1a49d284a0`）。
 - **`数据汇总` 标签切换无效**：`_switch_action(2)` 调用
   `action_stack.setCurrentIndex(2)`，但栈中只添加了 `roi_panel` 与 `sam_panel`
   两个页面（越界无效）。汇总内容实际由右侧 `page_stack` 承载。
